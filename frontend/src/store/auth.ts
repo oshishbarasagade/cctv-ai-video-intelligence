@@ -8,6 +8,7 @@ interface AuthState {
   init: () => Promise<void>;
   login: (email: string, password: string) => Promise<User>;
   signup: (full_name: string, email: string, password: string) => Promise<User>;
+  applyToken: (token: string) => Promise<User>;
   completeOnboarding: (data: {
     full_name?: string;
     use_case?: string;
@@ -55,6 +56,15 @@ export const useAuth = create<AuthState>((set, get) => ({
     setToken(data.token);
     set({ user: data.user });
     return data.user;
+  },
+
+  applyToken: async (token) => {
+    // Used after Google OAuth: store the Supabase access token and load the
+    // profile through our backend (which verifies the token with Supabase).
+    setToken(token);
+    const { data } = await api.get<User>("/auth/me");
+    set({ user: data, loading: false });
+    return data;
   },
 
   completeOnboarding: async (payload) => {

@@ -28,8 +28,17 @@ export function formatBytes(bytes?: number): string {
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
-export function relativeTime(epochSec?: number): string {
-  if (!epochSec) return "";
+export function relativeTime(ts?: number | string): string {
+  if (!ts) return "";
+  // Accept epoch seconds (SQLite) or ISO timestamp strings (Supabase/Postgres).
+  let epochSec: number;
+  if (typeof ts === "string") {
+    const ms = Date.parse(ts);
+    if (isNaN(ms)) return "";
+    epochSec = ms / 1000;
+  } else {
+    epochSec = ts;
+  }
   const diff = Date.now() / 1000 - epochSec;
   if (diff < 60) return "just now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;

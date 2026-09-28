@@ -46,6 +46,20 @@ def overview(video_id: str, uid: str = Depends(current_user_id)):
     }
 
 
+@router.get("/{video_id}/status")
+def status(video_id: str, uid: str = Depends(current_user_id)):
+    """Latest processing-job status for a video — drives live refresh in the
+    analysis workspace so results appear as they are produced."""
+    _own_video(video_id, uid)
+    jobs = store.list_where("processing_jobs", uid, "video_id=?", (video_id,),
+                            "created_at desc")
+    if not jobs:
+        return {"status": "unknown", "stage": None, "progress": 0}
+    j = jobs[0]
+    return {"status": j["status"], "stage": j.get("stage"),
+            "progress": j.get("progress", 0)}
+
+
 @router.get("/{video_id}/events")
 def events(video_id: str, uid: str = Depends(current_user_id)):
     _own_video(video_id, uid)

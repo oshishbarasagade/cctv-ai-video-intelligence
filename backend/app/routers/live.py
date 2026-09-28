@@ -8,13 +8,58 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+import cv2
+import numpy as np
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from .. import store
+from ..ai import tracking
 from ..deps import current_user_id
 
 router = APIRouter(prefix="/live", tags=["live"])
+
+
+@router.post("/detect")
+async def detect_frame(
+    file: UploadFile = File(...),
+    conf: float = Form(0.5),
+    _uid: str = Depends(current_user_id),
+):
+    """Run the REAL YOLO model on a single webcam frame and return detections.
+
+    Browser-side YOLO is not installed, so live inference runs on the backend
+    model (the same yolov8n used by the offline pipeline). No fake detections:
+    if the model is unavailable we say so explicitly.
+    """
+    model = tracking._model()
+    if model is None:
+        return {"available": False, "detections": [], "inference_ms": 0,
+                "width": 0, "height": 0}
+
+    raw = await file.read()
+    arr = np.frombuffer(raw, np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Invalid image frame.")
+
+    t0 = time.time()
+    res = model.predict(img, verbose=False, conf=max(0.1, min(conf, 0.95)))[0]
+    dets = []
+    names = res.names
+    for box in res.boxes:
+        name = names[int(box.cls)]
+        if name not in tracking._KEEP:
+            continue
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        dets.append({
+            "type": tracking._ALIAS.get(name, name),
+            "confidence": round(float(box.conf), 2),
+            "bbox": [round(x1, 1), round(y1, 1), round(x2 - x1, 1), round(y2 - y1, 1)],
+        })
+    return {"available": True, "detections": dets,
+            "inference_ms": round((time.time() - t0) * 1000),
+            "width": int(img.shape[1]), "height": int(img.shape[0])}
 
 
 class ZoneCreate(BaseModel):

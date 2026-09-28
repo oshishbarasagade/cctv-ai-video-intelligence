@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Play, Pause, Zap, Box, Users, Type, ScanEye, Search,
   Flag, MessageSquare, Sparkles, Download, GitCompareArrows, FileText,
@@ -20,6 +20,7 @@ type Tab = "overview" | "objects" | "people" | "ocr" | "events" | "search";
 export function Analysis() {
   const { videoId } = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoSrc, setVideoSrc] = useState<string>();
   const [current, setCurrent] = useState(0);
@@ -35,6 +36,37 @@ export function Analysis() {
   const people = useQuery({ queryKey: ["pe", videoId], queryFn: async () => (await api.get<{ people: Subject[] }>(`/analysis/${videoId}/people`)).data.people });
   const ocr = useQuery({ queryKey: ["oc", videoId], queryFn: async () => (await api.get<{ ocr: OcrResult[] }>(`/analysis/${videoId}/ocr`)).data.ocr });
   const captions = useQuery({ queryKey: ["ca", videoId], queryFn: async () => (await api.get<{ captions: Caption[] }>(`/analysis/${videoId}/captions`)).data.captions });
+
+  // Live processing status — polls while the job runs (spec §52: realtime feel).
+  const status = useQuery({
+    queryKey: ["status", videoId],
+    queryFn: async () => (await api.get(`/analysis/${videoId}/status`)).data as
+      { status: string; stage?: string; progress?: number },
+    refetchInterval: (q) => {
+      const s = q.state.data?.status;
+      return s === "completed" || s === "failed" || s === "unknown" ? false : 1500;
+    },
+  });
+  const processing = ["queued", "running"].includes(status.data?.status ?? "");
+
+  // While processing, refresh all analysis panels so results stream in live;
+  // when it finishes, do one final refresh.
+  useEffect(() => {
+    if (!processing) {
+      qc.invalidateQueries({ queryKey: ["ov", videoId] });
+      qc.invalidateQueries({ queryKey: ["ev", videoId] });
+      qc.invalidateQueries({ queryKey: ["ob", videoId] });
+      qc.invalidateQueries({ queryKey: ["pe", videoId] });
+      qc.invalidateQueries({ queryKey: ["oc", videoId] });
+      qc.invalidateQueries({ queryKey: ["ca", videoId] });
+      return;
+    }
+    const id = setInterval(() => {
+      ["ov", "ev", "ob", "pe", "oc", "ca"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k, videoId] }));
+    }, 2500);
+    return () => clearInterval(id);
+  }, [processing, videoId, qc]);
 
   const video: Video | undefined = overview.data?.video;
   const dur = duration || video?.duration_sec || 0;
@@ -128,9 +160,16 @@ export function Analysis() {
           </Button>
           <div>
             <p className="text-sm font-semibold leading-tight">{video?.original_name}</p>
-            <p className="text-xs text-muted">
-              {formatTime(dur)} · {overview.data?.counts.events} events · {overview.data?.counts.objects} objects
-            </p>
+            {processing ? (
+              <p className="flex items-center gap-1.5 text-xs text-accent">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                Analyzing… {status.data?.stage} {status.data?.progress ?? 0}%
+              </p>
+            ) : (
+              <p className="text-xs text-muted">
+                {formatTime(dur)} · {overview.data?.counts.events} events · {overview.data?.counts.objects} objects
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -356,12 +395,18 @@ function PanelList({ tab, events, objects, people, ocr, onSeek, videoId }: {
 
   if (tab === "objects") {
     const counts = objects?.counts ?? {};
-    return Object.keys(counts).length ? (
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const max = Math.max(1, ...entries.map(([, n]) => n));
+    return entries.length ? (
       <div className="space-y-1.5">
-        {Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([type, n]) => (
-          <div key={type} className="flex items-center justify-between rounded-lg border border-line p-2.5">
-            <span className="text-sm capitalize">{type}</span>
-            <Badge>{n}</Badge>
+        {entries.map(([type, n]) => (
+          <div key={type} className="relative overflow-hidden rounded-lg border border-line p-2.5">
+            <div className="absolute inset-y-0 left-0 bg-ink/[0.06]"
+                 style={{ width: `${(n / max) * 100}%` }} />
+            <div className="relative flex items-center justify-between">
+              <span className="text-sm capitalize">{type}</span>
+              <Badge>{n}</Badge>
+            </div>
           </div>
         ))}
       </div>

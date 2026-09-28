@@ -8,7 +8,7 @@ is the second line of defense for any direct client access.
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
+import threading
 from typing import Optional
 
 from . import config
@@ -18,10 +18,14 @@ logger = logging.getLogger("subli.supa")
 VIDEO_BUCKET = "videos"
 ARTIFACT_BUCKET = "artifacts"
 
+# One SERVICE-ROLE client per thread. FastAPI runs sync endpoints on a threadpool;
+# a single shared supabase-py (httpx) client is not safe across threads and causes
+# intermittent socket errors on Windows (WinError 10035). Thread-local avoids that.
+_local = threading.local()
 
-@lru_cache(maxsize=1)
+
 def client():
-    """Cached SERVICE-ROLE client for admin, table and storage ops.
+    """Thread-local SERVICE-ROLE client for admin, table and storage ops.
 
     Never call sign_in_with_password on this client — supabase-py stores the
     session on the client and would then send a non-admin token on subsequent
@@ -29,9 +33,12 @@ def client():
     """
     if config.OFFLINE_MODE:
         return None
-    from supabase import create_client
-    logger.info("Connecting to Supabase %s", config.SUPABASE_URL)
-    return create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
+    c = getattr(_local, "client", None)
+    if c is None:
+        from supabase import create_client
+        c = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY)
+        _local.client = c
+    return c
 
 
 def _fresh_anon():

@@ -12,6 +12,7 @@ import { Analysis } from "@/pages/Analysis";
 import { Live } from "@/pages/Live";
 import { CommandCenter } from "@/pages/CommandCenter";
 import { Presentation } from "@/pages/Presentation";
+import { AuthCallback } from "@/pages/AuthCallback";
 import { CommandPalette } from "@/components/CommandPalette";
 import { NotFound } from "@/pages/NotFound";
 
@@ -33,6 +34,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
           <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/projects/:projectId" element={<ProtectedRoute><Project /></ProtectedRoute>} />
