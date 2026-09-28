@@ -1,0 +1,30 @@
+# --- Core API ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-dotenv==1.0.1
+python-multipart==0.0.20
+pydantic[email]==2.10.4
+
+# --- Video / computer vision ---
+opencv-python-headless==4.10.0.84
+Pillow==11.0.0
+numpy==2.2.1
+
+# --- PDF reports ---
+reportlab==4.2.5
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1
+
+# ---------------------------------------------------------------------------
+# OPTIONAL — the app runs fully without these (heuristic CV, hashing search,
+# grounded offline reasoning). Install to enable the real models/services.
+# ---------------------------------------------------------------------------
+# transformers==4.47.1          # BLIP captioning
+# torch==2.5.1                  # required by transformers/YOLO
+# ultralytics==8.3.55           # YOLO object detection
+# easyocr==1.7.2                # OCR (or: pytesseract + Tesseract binary)
+# sentence-transformers==3.3.1  # real semantic-search embeddings
+# anthropic==0.42.0             # Claude reasoning (needs CLAUDE_API_KEY)
+# supabase==2.10.0              # Supabase Auth/DB/Storage/Realtime

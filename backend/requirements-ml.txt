@@ -1,0 +1,19 @@
+# Real vision-AI stack (Phase 3/6). Large (~3-5 GB first run); CPU works, GPU
+# optional. Kept separate from requirements.txt so CI/offline stays light.
+#
+#   pip install -r requirements-ml.txt
+#   set FORCE_FALLBACK=0
+#
+# Note: ultralytics/easyocr pull the full `opencv-python`; if you previously had
+# `opencv-python-headless`, uninstall it first to avoid a cv2 conflict.
+
+ultralytics==8.3.55            # YOLOv8 object detection + ByteTrack tracking
+transformers==4.47.1           # BLIP image captioning
+torch==2.5.1                   # backs transformers + ultralytics
+torchvision==0.20.1
+easyocr==1.7.2                 # OCR
+sentence-transformers==3.3.1   # real semantic-search embeddings
+
+# Real reasoning + backend services (need credentials, not models):
+anthropic==0.42.0              # Claude (set CLAUDE_API_KEY)
+supabase==2.10.0               # Supabase Auth/DB/Storage/Realtime

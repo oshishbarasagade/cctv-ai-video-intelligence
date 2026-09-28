@@ -1,0 +1,23 @@
+# Secrets
+**/.env
+**/firebase_key.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+env/
+venv/
+.pytest_cache/
+backend/data/
+backend/.models/
+**/.models/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# OS
+.DS_Store
+Thumbs.db
