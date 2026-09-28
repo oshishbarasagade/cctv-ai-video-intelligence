@@ -77,6 +77,16 @@ def graph(video_id: str, uid: str = Depends(current_user_id)):
     }
 
 
+@router.get("/{video_id}/trajectories")
+def trajectories(video_id: str, uid: str = Depends(current_user_id)):
+    """Movement paths reconstructed from real object detections."""
+    v = _own_video(video_id, uid)
+    from ..ai import trajectories as traj
+    objects = store.list_where("objects", uid, "video_id=?", (video_id,), "ts asc")
+    paths = traj.build(objects, v.get("width") or 0, v.get("height") or 0)
+    return {"trajectories": paths, "width": v.get("width"), "height": v.get("height")}
+
+
 @router.get("/{video_id}/highlights")
 def get_highlights(video_id: str, uid: str = Depends(current_user_id)):
     _own_video(video_id, uid)

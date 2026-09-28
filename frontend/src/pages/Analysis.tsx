@@ -29,6 +29,7 @@ export function Analysis() {
   const [playing, setPlaying] = useState(false);
   const [tab, setTab] = useState<Tab>("highlights");
   const [showBoxes, setShowBoxes] = useState(true);
+  const [showPaths, setShowPaths] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [showQuality, setShowQuality] = useState(false);
 
@@ -41,6 +42,7 @@ export function Analysis() {
   const captions = useQuery({ queryKey: ["ca", videoId], queryFn: async () => (await api.get<{ captions: Caption[] }>(`/analysis/${videoId}/captions`)).data.captions });
   const highlights = useQuery({ queryKey: ["hl", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/highlights`)).data.highlights as any[] });
   const memoryQ = useQuery({ queryKey: ["mem", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/memory`)).data.memory as any[] });
+  const trajectories = useQuery({ queryKey: ["traj", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/trajectories`)).data.trajectories as any[] });
 
   // Live processing status — polls while the job runs (spec §52: realtime feel).
   const status = useQuery({
@@ -250,6 +252,9 @@ export function Analysis() {
                     vh={video.height}
                   />
                 )}
+                {showPaths && (
+                  <PathOverlay trajectories={trajectories.data ?? []} current={current} />
+                )}
               </div>
             ) : (
               <div className="text-white/60"><Spinner className="h-6 w-6" /></div>
@@ -273,6 +278,14 @@ export function Analysis() {
                 title="Toggle AI detection boxes"
               >
                 <ScanEye className="h-4 w-4" /> Boxes
+              </Button>
+              <Button
+                variant={showPaths ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowPaths((b) => !b)}
+                title="Toggle movement paths"
+              >
+                <Share2 className="h-4 w-4" /> Paths
               </Button>
               <select
                 className="rounded-md border border-line bg-surface px-2 py-1 text-xs"
@@ -461,6 +474,30 @@ function BoxOverlay({ objects, current, vw, vh }: {
                   fontSize={vh * 0.032} fill="#fff" fontFamily="monospace">
               {o.type} {o.confidence ? Math.round(o.confidence * 100) + "%" : ""}
             </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// Reconstructed movement paths, revealed up to the current playback time.
+function PathOverlay({ trajectories, current }: { trajectories: any[]; current: number }) {
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox="0 0 1000 1000" preserveAspectRatio="none">
+      {trajectories.map((t, i) => {
+        const pts = t.points.filter((p: any) => p.ts <= current + 0.05);
+        if (pts.length < 2) return null;
+        const color = BOX_COLORS[t.type] || "#3b82f6";
+        const d = pts.map((p: any, j: number) =>
+          `${j === 0 ? "M" : "L"} ${p.x * 1000} ${p.y * 1000}`).join(" ");
+        const head = pts[pts.length - 1];
+        return (
+          <g key={i}>
+            <path d={d} fill="none" stroke={color} strokeWidth={3}
+              strokeLinejoin="round" strokeLinecap="round" opacity={0.85} />
+            <circle cx={head.x * 1000} cy={head.y * 1000} r={6} fill={color} />
           </g>
         );
       })}
