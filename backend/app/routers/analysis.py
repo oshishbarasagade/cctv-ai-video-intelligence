@@ -77,6 +77,105 @@ def graph(video_id: str, uid: str = Depends(current_user_id)):
     }
 
 
+@router.get("/{video_id}/highlights")
+def get_highlights(video_id: str, uid: str = Depends(current_user_id)):
+    _own_video(video_id, uid)
+    from ..ai import highlights
+    events = store.list_where("events", uid, "video_id=?", (video_id,), "start_time asc")
+    states = store.list_where("environment_states", uid, "video_id=?", (video_id,), "ts asc")
+    return {"highlights": highlights.build(events, states)}
+
+
+@router.get("/{video_id}/memory")
+def memory(video_id: str, uid: str = Depends(current_user_id)):
+    """Chronological state-change memory from temporal memory (real states)."""
+    _own_video(video_id, uid)
+    states = store.list_where("environment_states", uid, "video_id=?", (video_id,), "ts asc")
+    items = []
+    prev = None
+    for s in states:
+        st = s.get("state") or {}
+        if prev is None:
+            items.append({"ts": s["ts"], "changes": [
+                {"field": "people", "from": 0, "to": st.get("people", 0)}],
+                "state": st})
+        else:
+            changes = []
+            for k in ("people", "vehicles", "activity"):
+                if st.get(k) != prev.get(k):
+                    changes.append({"field": k, "from": prev.get(k), "to": st.get(k)})
+            if changes:
+                items.append({"ts": s["ts"], "changes": changes, "state": st})
+        prev = st
+    return {"memory": items}
+
+
+@router.get("/{video_id}/quality")
+def quality(video_id: str, uid: str = Depends(current_user_id)):
+    """Analysis quality metrics + warnings (spec §12). Real counts only."""
+    v = _own_video(video_id, uid)
+    counts = {t: store.count(t, uid, "video_id=?", (video_id,)) for t in
+              ("frames", "objects", "subjects", "ocr_results", "events",
+               "captions", "embeddings")}
+    jobs = store.list_where("processing_jobs", uid, "video_id=?", (video_id,),
+                            "created_at desc")
+    job = jobs[0] if jobs else {}
+    warnings = []
+    if counts["frames"] < 5:
+        warnings.append("Few frames were sampled — try DEEP mode for finer analysis.")
+    if counts["objects"] == 0:
+        warnings.append("No objects detected — video may be low quality or empty.")
+    if counts["ocr_results"] == 0:
+        warnings.append("No readable text detected (OCR).")
+    if job.get("status") == "failed":
+        warnings.append(f"Processing failed at stage: {job.get('failed_stage')}.")
+    caps = store.list_where("captions", uid, "video_id=?", (video_id,))
+    model = caps[0]["model"] if caps else "n/a"
+    return {
+        "metrics": {**counts,
+                    "duration_sec": v.get("duration_sec"),
+                    "mode": job.get("mode"),
+                    "status": job.get("status")},
+        "models": {"detection": "yolov8n", "captioning": model,
+                   "embeddings": "all-MiniLM-L6-v2"},
+        "warnings": warnings,
+    }
+
+
+@router.get("/{video_id}/explain")
+def explain(video_id: str, ts: float, uid: str = Depends(current_user_id)):
+    """Explain the moment at a timestamp using only real analyzed data."""
+    _own_video(video_id, uid)
+    from ..ai.reasoning import service
+
+    win = 1.5
+    subjects = [s for s in store.list_where("subjects", uid, "video_id=?", (video_id,))
+                if (s.get("first_seen") or 0) - win <= ts <= (s.get("last_seen") or 0) + win]
+    objects = [o for o in store.list_where("objects", uid, "video_id=?", (video_id,))
+               if abs(o["ts"] - ts) <= win]
+    ocr = [o for o in store.list_where("ocr_results", uid, "video_id=?", (video_id,))
+           if abs(o["ts"] - ts) <= win]
+    caps = store.list_where("captions", uid, "video_id=?", (video_id,), "ts asc")
+    caption = min(caps, key=lambda c: abs(c["ts"] - ts))["text"] if caps else None
+    states = store.list_where("environment_states", uid, "video_id=?", (video_id,), "ts asc")
+    state = min(states, key=lambda s: abs(s["ts"] - ts))["state"] if states else {}
+    events = [e for e in store.list_where("events", uid, "video_id=?", (video_id,))
+              if abs(e["start_time"] - ts) <= win]
+
+    obj_counts: dict = {}
+    for o in objects:
+        obj_counts[o["type"]] = obj_counts.get(o["type"], 0) + 1
+
+    moment = {
+        "ts": ts, "caption": caption, "state": state,
+        "people": [s["label"] for s in subjects],
+        "objects": obj_counts, "ocr": [o["text"] for o in ocr],
+        "events": [{"ts": e["start_time"], "description": e.get("description")} for e in events],
+    }
+    moment["explanation"] = service.explain_moment(moment)
+    return moment
+
+
 @router.get("/{video_id}/objects")
 def objects(video_id: str, uid: str = Depends(current_user_id)):
     _own_video(video_id, uid)

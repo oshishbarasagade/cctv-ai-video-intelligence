@@ -107,6 +107,31 @@ class ClaudeReasoningService:
                 story = txt
         return {"answer": story, "citations": cites}
 
+    def explain_moment(self, m: Dict) -> str:
+        """One grounded sentence about a single moment (real data only)."""
+        parts = []
+        if m.get("caption"):
+            parts.append(f"scene: {m['caption']}")
+        if m.get("people"):
+            parts.append(f"people: {', '.join(m['people'][:6])}")
+        if m.get("objects"):
+            parts.append("objects: " + ", ".join(f"{v} {k}" for k, v in m["objects"].items()))
+        if m.get("ocr"):
+            parts.append("text: " + ", ".join(f'"{t}"' for t in m["ocr"][:5]))
+        if m.get("state"):
+            parts.append("state: " + ", ".join(f"{k}={v}" for k, v in m["state"].items()))
+        facts = "; ".join(parts) if parts else ""
+        if not facts:
+            return CANNOT
+        base = f"At {_fmt_ts(m['ts'])} — {facts}."
+        if self.llm_available:
+            txt = self._llm(self._SYSTEM,
+                            f"Describe this exact moment in one or two neutral "
+                            f"sentences at {_fmt_ts(m['ts'])} using only these facts:\n{facts}")
+            if txt:
+                return txt
+        return base
+
     def compare_states(self, a: Optional[Dict], b: Optional[Dict],
                        ts_a: float, ts_b: float) -> Dict:
         if not a or not b:

@@ -15,7 +15,7 @@ import type {
   SearchResult, Subject, Video,
 } from "@/types";
 
-type Tab = "overview" | "objects" | "people" | "ocr" | "events" | "search";
+type Tab = "highlights" | "events" | "objects" | "people" | "ocr" | "memory" | "search";
 
 export function Analysis() {
   const { videoId } = useParams();
@@ -26,7 +26,7 @@ export function Analysis() {
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [tab, setTab] = useState<Tab>("events");
+  const [tab, setTab] = useState<Tab>("highlights");
   const [showBoxes, setShowBoxes] = useState(true);
 
   // --- data ---
@@ -36,6 +36,8 @@ export function Analysis() {
   const people = useQuery({ queryKey: ["pe", videoId], queryFn: async () => (await api.get<{ people: Subject[] }>(`/analysis/${videoId}/people`)).data.people });
   const ocr = useQuery({ queryKey: ["oc", videoId], queryFn: async () => (await api.get<{ ocr: OcrResult[] }>(`/analysis/${videoId}/ocr`)).data.ocr });
   const captions = useQuery({ queryKey: ["ca", videoId], queryFn: async () => (await api.get<{ captions: Caption[] }>(`/analysis/${videoId}/captions`)).data.captions });
+  const highlights = useQuery({ queryKey: ["hl", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/highlights`)).data.highlights as any[] });
+  const memoryQ = useQuery({ queryKey: ["mem", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/memory`)).data.memory as any[] });
 
   // Live processing status — polls while the job runs (spec §52: realtime feel).
   const status = useQuery({
@@ -62,7 +64,7 @@ export function Analysis() {
       return;
     }
     const id = setInterval(() => {
-      ["ov", "ev", "ob", "pe", "oc", "ca"].forEach((k) =>
+      ["ov", "ev", "ob", "pe", "oc", "ca", "hl", "mem"].forEach((k) =>
         qc.invalidateQueries({ queryKey: [k, videoId] }));
     }, 2500);
     return () => clearInterval(id);
@@ -194,10 +196,12 @@ export function Analysis() {
           <LeftRail
             tab={tab} setTab={setTab}
             counts={{
+              highlights: highlights.data?.length ?? 0,
               events: events.data?.length ?? 0,
               objects: objects.data?.objects.length ?? 0,
               people: people.data?.length ?? 0,
               ocr: ocr.data?.length ?? 0,
+              memory: memoryQ.data?.length ?? 0,
             }}
           />
           <div className="p-3">
@@ -207,6 +211,8 @@ export function Analysis() {
               objects={objects.data}
               people={people.data ?? []}
               ocr={ocr.data ?? []}
+              highlights={highlights.data ?? []}
+              memory={memoryQ.data ?? []}
               onSeek={seek}
               videoId={videoId!}
             />
@@ -337,10 +343,12 @@ function LeftRail({ tab, setTab, counts }: {
   tab: Tab; setTab: (t: Tab) => void; counts: Record<string, number>;
 }) {
   const items: { id: Tab; label: string; icon: any; n?: number }[] = [
+    { id: "highlights", label: "Highlights", icon: Sparkles, n: counts.highlights },
     { id: "events", label: "Events", icon: Zap, n: counts.events },
     { id: "objects", label: "Objects", icon: Box, n: counts.objects },
     { id: "people", label: "People", icon: Users, n: counts.people },
     { id: "ocr", label: "Text (OCR)", icon: Type, n: counts.ocr },
+    { id: "memory", label: "Memory", icon: GitCompareArrows, n: counts.memory },
     { id: "search", label: "Search", icon: Search },
   ];
   return (
@@ -365,16 +373,54 @@ function LeftRail({ tab, setTab, counts }: {
   );
 }
 
-function PanelList({ tab, events, objects, people, ocr, onSeek, videoId }: {
+function PanelList({ tab, events, objects, people, ocr, onSeek, videoId, highlights, memory }: {
   tab: Tab;
   events: Event[];
   objects?: { objects: DetectedObject[]; counts: Record<string, number> };
   people: Subject[];
   ocr: OcrResult[];
+  highlights: any[];
+  memory: any[];
   onSeek: (t: number) => void;
   videoId: string;
 }) {
   if (tab === "search") return <SearchPanel videoId={videoId} onSeek={onSeek} />;
+
+  if (tab === "highlights")
+    return highlights.length ? (
+      <ul className="space-y-1.5">
+        {highlights.map((h, i) => (
+          <li key={i}>
+            <button onClick={() => onSeek(h.ts)} className="w-full rounded-lg border border-line p-2.5 text-left hover:bg-bg">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs text-accent">{formatTime(h.ts)}</span>
+                <span className="rounded-full bg-ink/[0.06] px-1.5 text-xs tabular-nums text-muted">{Math.round(h.score * 100)}</span>
+              </div>
+              <p className="mt-1 text-sm font-medium">{h.title}</p>
+              <p className="text-xs text-muted">{h.description}</p>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : <EmptyState title="No highlights yet" hint="Highlights appear once analysis produces events." />;
+
+  if (tab === "memory")
+    return memory.length ? (
+      <ul className="space-y-1.5">
+        {memory.map((m, i) => (
+          <li key={i}>
+            <button onClick={() => onSeek(m.ts)} className="w-full rounded-lg border border-line p-2.5 text-left hover:bg-bg">
+              <span className="font-mono text-xs text-accent">{formatTime(m.ts)}</span>
+              <div className="mt-1 space-y-0.5">
+                {m.changes.map((c: any, j: number) => (
+                  <p key={j} className="text-xs capitalize">{c.field}: <span className="text-muted">{String(c.from)} → {String(c.to)}</span></p>
+                ))}
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : <EmptyState title="No memory changes" hint="Temporal state changes appear here." />;
 
   if (tab === "events")
     return events.length ? (
@@ -523,6 +569,19 @@ function RightPanel({ videoId, captions, current, onSeek }: {
     [captions, current]
   );
 
+  const [explain, setExplain] = useState<string | null>(null);
+  const [explainBusy, setExplainBusy] = useState(false);
+  async function explainMoment() {
+    setExplainBusy(true);
+    setExplain(null);
+    try {
+      const { data } = await api.get(`/analysis/${videoId}/explain`, { params: { ts: current } });
+      setExplain(data.explanation);
+    } finally {
+      setExplainBusy(false);
+    }
+  }
+
   async function ask(question?: string) {
     const text = question ?? q;
     if (!text.trim()) return;
@@ -565,7 +624,13 @@ function RightPanel({ videoId, captions, current, onSeek }: {
           <Button variant="outline" size="sm" className="flex-1" onClick={addEvidence}>
             <Flag className="h-3.5 w-3.5" /> {added ? "Added!" : "Add evidence"}
           </Button>
+          <Button variant="outline" size="sm" className="flex-1" onClick={explainMoment} disabled={explainBusy}>
+            {explainBusy ? <Spinner /> : <ScanEye className="h-3.5 w-3.5" />} Explain
+          </Button>
         </div>
+        {explain && (
+          <div className="animate-fade-in mt-2 rounded-lg border border-line bg-bg p-3 text-sm">{explain}</div>
+        )}
       </div>
 
       <div>
