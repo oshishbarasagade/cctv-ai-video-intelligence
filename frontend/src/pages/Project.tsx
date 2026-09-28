@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { UploadCloud, ArrowLeft, Film, Play, RotateCw } from "lucide-react";
+import { UploadCloud, ArrowLeft, Film, Play, RotateCw, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppShell, PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress, Spinner, Badge } from "@/components/ui/misc";
 import { cn, formatBytes, formatTime, relativeTime } from "@/lib/utils";
 import type { Project as TProject, Job } from "@/types";
@@ -86,6 +87,10 @@ export function Project() {
           title={project.data?.name || "Project"}
           subtitle={project.data?.description || "Upload a video to analyze."}
         />
+
+        {(project.data?.videos?.length ?? 0) > 0 && (
+          <ProjectSearch projectId={projectId!} onOpen={(vid) => navigate(`/analysis/${vid}`)} />
+        )}
 
         {/* upload / processing */}
         <div className="mt-6">
@@ -221,5 +226,48 @@ export function Project() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function ProjectSearch({ projectId, onOpen }: { projectId: string; onOpen: (vid: string) => void }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<any[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    if (!q.trim()) return;
+    setBusy(true);
+    try {
+      const { data } = await api.get(`/projects/${projectId}/search`, { params: { q } });
+      setResults(data.results);
+    } finally { setBusy(false); }
+  }
+  const KIND: Record<string, string> = { event: "Event", object: "Object", ocr: "Text" };
+  return (
+    <div className="mt-6 rounded-xl border border-line bg-surface p-4">
+      <div className="flex gap-2">
+        <Input placeholder="Search this project — events, objects, text… (e.g. person, vehicle, EXIT)"
+          value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && run()} />
+        <Button size="icon" onClick={run}>{busy ? <Spinner /> : <Search className="h-4 w-4" />}</Button>
+      </div>
+      {results !== null && (
+        results.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">No analyzed data available for “{q}”.</p>
+        ) : (
+          <ul className="mt-3 max-h-72 space-y-1.5 overflow-y-auto">
+            {results.map((r, i) => (
+              <li key={i}>
+                <button onClick={() => onOpen(r.video_id)}
+                  className="flex w-full items-center gap-3 rounded-lg border border-line p-2.5 text-left hover:bg-bg">
+                  <Badge variant="outline">{KIND[r.kind] || r.kind}</Badge>
+                  <span className="font-mono text-xs text-accent">{formatTime(r.ts)}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{r.text}</span>
+                  <span className="truncate text-xs text-muted">{r.video}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
   );
 }

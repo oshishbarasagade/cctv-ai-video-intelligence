@@ -30,6 +30,36 @@ def create_project(body: ProjectCreate, uid: str = Depends(current_user_id)):
     return store.get("projects", pid, uid)
 
 
+@router.get("/{project_id}/search")
+def project_search(project_id: str, q: str, uid: str = Depends(current_user_id)):
+    """Search across every analyzed video in a project (spec §15).
+    Real data only: events, objects, OCR, evidence."""
+    if not store.get("projects", project_id, uid):
+        raise HTTPException(status_code=404, detail="Project not found.")
+    ql = q.strip().lower()
+    if not ql:
+        return {"results": []}
+    videos = store.list_where("videos", uid, "project_id=?", (project_id,))
+    results = []
+    for v in videos:
+        vid, vname = v["id"], v.get("original_name")
+        for e in store.list_where("events", uid, "video_id=?", (vid,)):
+            if ql in e["type"].lower() or ql in (e.get("description") or "").lower():
+                results.append({"video_id": vid, "video": vname, "kind": "event",
+                                "ts": e["start_time"], "text": e.get("description")})
+        for o in store.list_where("objects", uid, "video_id=?", (vid,)):
+            if ql in o["type"].lower():
+                results.append({"video_id": vid, "video": vname, "kind": "object",
+                                "ts": o["ts"], "text": f"{o['type']} ({int((o.get('confidence') or 0)*100)}%)"})
+        for oc in store.list_where("ocr_results", uid, "video_id=?", (vid,)):
+            if ql in (oc.get("text") or "").lower():
+                results.append({"video_id": vid, "video": vname, "kind": "ocr",
+                                "ts": oc["ts"], "text": f'"{oc["text"]}"'})
+    # cap object matches (can be many) and sort by video+ts
+    results.sort(key=lambda r: (r["video_id"], r["ts"]))
+    return {"results": results[:200], "count": len(results)}
+
+
 @router.get("/{project_id}")
 def get_project(project_id: str, uid: str = Depends(current_user_id)):
     p = store.get("projects", project_id, uid)

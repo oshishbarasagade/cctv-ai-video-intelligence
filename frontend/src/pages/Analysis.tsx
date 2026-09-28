@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Play, Pause, Zap, Box, Users, Type, ScanEye, Search,
   Flag, MessageSquare, Sparkles, Download, GitCompareArrows, FileText,
+  Share2, Gauge, X,
 } from "lucide-react";
 import { api, mediaUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,8 @@ export function Analysis() {
   const [playing, setPlaying] = useState(false);
   const [tab, setTab] = useState<Tab>("highlights");
   const [showBoxes, setShowBoxes] = useState(true);
+  const [showGraph, setShowGraph] = useState(false);
+  const [showQuality, setShowQuality] = useState(false);
 
   // --- data ---
   const overview = useQuery({ queryKey: ["ov", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/overview`)).data });
@@ -181,6 +184,12 @@ export function Analysis() {
           <Button variant="outline" size="sm" onClick={generateReport} disabled={reportBusy}>
             {reportBusy ? <Spinner /> : <FileText className="h-4 w-4" />} Report
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowGraph(true)} title="Event graph">
+            <Share2 className="h-4 w-4" /> Graph
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowQuality(true)} title="Analysis quality">
+            <Gauge className="h-4 w-4" /> Quality
+          </Button>
           <Button variant="outline" size="sm" onClick={exportJson} title="Export analysis as JSON">
             <Download className="h-4 w-4" /> JSON
           </Button>
@@ -294,7 +303,127 @@ export function Analysis() {
           />
         </aside>
       </div>
+
+      {showGraph && (
+        <EventGraph videoId={videoId!} duration={dur}
+          onSeek={(t) => { seek(t); setShowGraph(false); }}
+          onClose={() => setShowGraph(false)} />
+      )}
+      {showQuality && (
+        <QualityPanel videoId={videoId!} onClose={() => setShowQuality(false)} />
+      )}
     </div>
+  );
+}
+
+// --------------------------------------------------------------------------
+function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="animate-fade-in relative z-10 flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-pop">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function EventGraph({ videoId, duration, onSeek, onClose }: {
+  videoId: string; duration: number; onSeek: (t: number) => void; onClose: () => void;
+}) {
+  const g = useQuery({
+    queryKey: ["graph", videoId],
+    queryFn: async () => (await api.get(`/analysis/${videoId}/graph`)).data as
+      { nodes: Event[]; edges: any[] },
+  });
+  const nodes = g.data?.nodes ?? [];
+  const edges = g.data?.edges ?? [];
+  const W = 860, H = Math.max(240, nodes.length ? 300 : 160);
+  const pos = (n: Event, i: number) => ({
+    x: 40 + (duration ? (n.start_time / duration) : (i / Math.max(nodes.length - 1, 1))) * (W - 80),
+    y: 60 + (i % 2 === 0 ? 0 : 120) + 40,
+  });
+  const byId: Record<string, { x: number; y: number }> = {};
+  nodes.forEach((n, i) => (byId[n.id] = pos(n, i)));
+
+  return (
+    <Overlay title="AI Event Graph" onClose={onClose}>
+      {g.isLoading ? <Spinner className="text-muted" /> :
+       nodes.length === 0 ? <EmptyState title="No analyzed data available." /> : (
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+          <defs>
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+              <path d="M0,0 L7,3 L0,6 Z" fill="#9ca3af" />
+            </marker>
+          </defs>
+          {edges.map((e, i) => {
+            const a = byId[e.from_event], b = byId[e.to_event];
+            if (!a || !b) return null;
+            return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              stroke="#9ca3af" strokeWidth={1.5} markerEnd="url(#arrow)" />;
+          })}
+          {nodes.map((n, i) => {
+            const p = pos(n, i);
+            return (
+              <g key={n.id} className="cursor-pointer" onClick={() => onSeek(n.start_time)}>
+                <circle cx={p.x} cy={p.y} r={8} fill="#111" />
+                <text x={p.x} y={p.y - 14} fontSize={11} textAnchor="middle" fill="#111" fontWeight="600">
+                  {n.type.replace(/_/g, " ").toLowerCase()}
+                </text>
+                <text x={p.x} y={p.y + 22} fontSize={10} textAnchor="middle" fill="#6B7280" fontFamily="monospace">
+                  {formatTime(n.start_time)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      )}
+      <p className="mt-3 text-xs text-muted">Nodes are real detected events; arrows show temporal "leads-to" relations. Click a node to seek.</p>
+    </Overlay>
+  );
+}
+
+function QualityPanel({ videoId, onClose }: { videoId: string; onClose: () => void }) {
+  const q = useQuery({
+    queryKey: ["quality", videoId],
+    queryFn: async () => (await api.get(`/analysis/${videoId}/quality`)).data as
+      { metrics: Record<string, any>; models: Record<string, string>; warnings: string[] },
+  });
+  return (
+    <Overlay title="Analysis Quality" onClose={onClose}>
+      {q.isLoading ? <Spinner className="text-muted" /> : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {Object.entries(q.data!.metrics).map(([k, v]) => (
+              <div key={k} className="rounded-lg border border-line p-3">
+                <p className="text-xs capitalize text-muted">{k.replace(/_/g, " ")}</p>
+                <p className="text-lg font-bold tabular-nums">{String(v ?? "—")}</p>
+              </div>
+            ))}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-medium text-muted">Models used</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(q.data!.models).map(([k, v]) => (
+                <Badge key={k} variant="outline">{k}: {v}</Badge>
+              ))}
+            </div>
+          </div>
+          {q.data!.warnings.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-warn">Warnings</p>
+              {q.data!.warnings.map((w, i) => (
+                <p key={i} className="rounded-lg border border-warn/40 bg-warn/5 p-2 text-xs text-warn">{w}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Overlay>
   );
 }
 
