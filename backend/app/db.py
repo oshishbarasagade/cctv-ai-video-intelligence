@@ -82,7 +82,8 @@ create table if not exists embeddings (
 );
 create table if not exists evidence (
   id text primary key, project_id text not null, video_id text, owner_id text not null,
-  ts real, frame_path text, event_id text, description text, confidence real, created_at real
+  ts real, frame_path text, event_id text, description text, confidence real, created_at real,
+  title text, note text, tags text, sort integer default 0
 );
 create table if not exists reports (
   id text primary key, project_id text not null, video_id text, owner_id text not null,

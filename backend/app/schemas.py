@@ -66,8 +66,19 @@ class EvidenceCreate(BaseModel):
     ts: Optional[float] = None
     frame_path: Optional[str] = None
     event_id: Optional[str] = None
+    title: Optional[str] = None
     description: Optional[str] = None
+    note: Optional[str] = None
+    tags: Optional[List[str]] = None
     confidence: Optional[float] = None
+
+
+class EvidenceUpdate(BaseModel):
+    title: Optional[str] = None
+    note: Optional[str] = None
+    tags: Optional[List[str]] = None
+    description: Optional[str] = None
+    sort: Optional[int] = None
 
 
 class ErrorResponse(BaseModel):

@@ -14,11 +14,13 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 @router.post("/{video_id}/generate")
-def generate(video_id: str, uid: str = Depends(current_user_id)):
+def generate(video_id: str, body: dict | None = None,
+             uid: str = Depends(current_user_id)):
     video = store.get("videos", video_id, uid)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found.")
-    path = reporting.generate(video_id, uid)
+    sections = (body or {}).get("sections")
+    path = reporting.generate(video_id, uid, sections=sections)
     rid = store.insert("reports", {
         "project_id": video["project_id"], "video_id": video_id,
         "owner_id": uid, "storage_path": str(path), "created_at": time.time()})

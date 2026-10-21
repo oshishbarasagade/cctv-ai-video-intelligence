@@ -37,6 +37,22 @@ def find_story(video_id: str, uid: str = Depends(current_user_id)):
     return service.find_story(ctx)
 
 
+@router.post("/investigate")
+def investigate(body: dict, uid: str = Depends(current_user_id)):
+    """Analyze ONLY the moments the user collected into an investigation.
+    body: { video_id, items: [{ts, label, description}] }"""
+    video_id = body.get("video_id")
+    items = body.get("items") or []
+    if video_id and not store.get("videos", video_id, uid):
+        raise HTTPException(status_code=404, detail="Video not found.")
+    if not items:
+        return {"answer": "No moments were added to this investigation yet.", "citations": []}
+    events = [{"type": "ITEM", "start_time": it.get("ts", 0),
+               "description": it.get("description") or it.get("label") or "moment"}
+              for it in items]
+    return service.find_story({"events": events})
+
+
 @router.post("/what-changed")
 def what_changed(body: WhatChangedRequest, uid: str = Depends(current_user_id)):
     ctx = _context(body.video_id, uid)

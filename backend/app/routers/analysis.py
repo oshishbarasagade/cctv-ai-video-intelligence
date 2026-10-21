@@ -31,6 +31,32 @@ def _ensure_local(local: Path, bucket: str, key: str) -> bool:
     return supa.download_to(bucket, key, str(local))
 
 
+@router.get("/compare")
+def compare(a: str, b: str, uid: str = Depends(current_user_id)):
+    """Compare two analyzed videos (real counts + diffs)."""
+    def summarize(vid: str):
+        v = store.get("videos", vid, uid)
+        if not v:
+            raise HTTPException(status_code=404, detail="Video not found.")
+        objs = store.list_where("objects", uid, "video_id=?", (vid,))
+        oc: dict = {}
+        for o in objs:
+            oc[o["type"]] = oc.get(o["type"], 0) + 1
+        return {"id": vid, "name": v.get("original_name"),
+                "duration": v.get("duration_sec"),
+                "people": store.count("subjects", uid, "video_id=?", (vid,)),
+                "events": store.count("events", uid, "video_id=?", (vid,)),
+                "ocr": store.count("ocr_results", uid, "video_id=?", (vid,)),
+                "objects": len(objs), "object_counts": oc}
+
+    A, B = summarize(a), summarize(b)
+    keys = set(A["object_counts"]) | set(B["object_counts"])
+    obj_diff = [{"type": k, "a": A["object_counts"].get(k, 0),
+                 "b": B["object_counts"].get(k, 0)} for k in sorted(keys)]
+    diffs = {f: {"a": A[f], "b": B[f]} for f in ("people", "events", "ocr", "objects")}
+    return {"a": A, "b": B, "object_diff": obj_diff, "diffs": diffs}
+
+
 @router.get("/{video_id}/overview")
 def overview(video_id: str, uid: str = Depends(current_user_id)):
     v = _own_video(video_id, uid)
@@ -75,6 +101,91 @@ def graph(video_id: str, uid: str = Depends(current_user_id)):
                                   "start_time asc"),
         "edges": store.list_where("event_relations", uid, "video_id=?", (video_id,)),
     }
+
+
+@router.get("/{video_id}/similar")
+def similar_frames(video_id: str, ts: float, limit: int = 8,
+                   uid: str = Depends(current_user_id)):
+    """Find moments most similar to the frame at `ts` using real embeddings."""
+    _own_video(video_id, uid)
+    from ..ai import embeddings as emb
+    rows = store.list_where("embeddings", uid, "video_id=? and kind=?",
+                            (video_id, "caption"))
+    if not rows:
+        return {"results": []}
+    anchor = min(rows, key=lambda r: abs((r.get("ts") or 0) - ts))
+    av = anchor.get("embedding")
+    if not av:
+        return {"results": []}
+    scored = []
+    for r in rows:
+        if abs((r.get("ts") or 0) - (anchor.get("ts") or 0)) < 0.25:
+            continue
+        v = r.get("embedding")
+        if v:
+            scored.append({"ts": r.get("ts"), "content": r.get("content"),
+                           "relevance": round(emb.cosine(av, v), 4)})
+    scored.sort(key=lambda x: x["relevance"], reverse=True)
+    return {"anchor_ts": anchor.get("ts"), "results": scored[:max(1, min(limit, 20))]}
+
+
+@router.get("/{video_id}/heatmap")
+def heatmap(video_id: str, grid: int = 16, uid: str = Depends(current_user_id)):
+    """Activity-density grid from real object centroids."""
+    v = _own_video(video_id, uid)
+    W = max(v.get("width") or 1, 1); H = max(v.get("height") or 1, 1)
+    g = max(4, min(grid, 32))
+    cells = [[0] * g for _ in range(g)]
+    for o in store.list_where("objects", uid, "video_id=?", (video_id,)):
+        b = o.get("bbox")
+        if not b:
+            continue
+        cx = (b[0] + b[2] / 2) / W; cy = (b[1] + b[3] / 2) / H
+        gx = min(g - 1, max(0, int(cx * g))); gy = min(g - 1, max(0, int(cy * g)))
+        cells[gy][gx] += 1
+    mx = max((max(row) for row in cells), default=0)
+    return {"grid": g, "cells": cells, "max": mx}
+
+
+@router.get("/{video_id}/dwell")
+def dwell(video_id: str, uid: str = Depends(current_user_id)):
+    """Dwell time per tracked object + loitering flags (real trajectories)."""
+    v = _own_video(video_id, uid)
+    from ..ai import trajectories as traj
+    objects = store.list_where("objects", uid, "video_id=?", (video_id,), "ts asc")
+    paths = traj.build(objects, v.get("width") or 0, v.get("height") or 0)
+    out = []
+    for p in paths:
+        first = p["points"][0]["ts"]; last = p["points"][-1]["ts"]
+        dwell = round(last - first, 1)
+        out.append({"label": p["label"], "type": p["type"],
+                    "first_seen": first, "last_seen": last, "dwell": dwell,
+                    "loitering": dwell >= 8.0})
+    out.sort(key=lambda x: x["dwell"], reverse=True)
+    return {"dwell": out}
+
+
+@router.get("/{video_id}/summary")
+def summary(video_id: str, uid: str = Depends(current_user_id)):
+    """Auto-summary (Claude, grounded) + suggested questions from real data."""
+    _own_video(video_id, uid)
+    from ..ai.reasoning import service
+    events = store.list_where("events", uid, "video_id=?", (video_id,), "start_time asc")
+    story = service.find_story({"events": events})
+
+    # suggested questions grounded in what data actually exists
+    has = lambda t: store.count(t, uid, "video_id=?", (video_id,)) > 0
+    q = ["What happened in this footage?"]
+    if store.count("subjects", uid, "video_id=?", (video_id,)) > 0:
+        q.append("When did the first person appear?")
+    if any(e["type"].startswith("VEHICLE") for e in events):
+        q.append("Show all vehicle events.")
+    if has("ocr_results"):
+        q.append("What text was visible?")
+    if len(events) > 1:
+        q.append("What changed over time?")
+    return {"summary": story["answer"], "citations": story.get("citations", []),
+            "suggested_questions": q[:5]}
 
 
 @router.get("/{video_id}/trajectories")

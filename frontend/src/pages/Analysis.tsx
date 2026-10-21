@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Play, Pause, Zap, Box, Users, Type, ScanEye, Search,
   Flag, MessageSquare, Sparkles, Download, GitCompareArrows, FileText,
-  Share2, Gauge, X,
+  Share2, Gauge, X, Clock3,
 } from "lucide-react";
 import { api, mediaUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import type {
   SearchResult, Subject, Video,
 } from "@/types";
 
-type Tab = "highlights" | "events" | "objects" | "people" | "ocr" | "memory" | "search";
+type Tab = "highlights" | "events" | "objects" | "people" | "ocr" | "memory" | "dwell" | "search";
 
 export function Analysis() {
   const { videoId } = useParams();
@@ -30,8 +30,10 @@ export function Analysis() {
   const [tab, setTab] = useState<Tab>("highlights");
   const [showBoxes, setShowBoxes] = useState(true);
   const [showPaths, setShowPaths] = useState(false);
+  const [showHeat, setShowHeat] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [showQuality, setShowQuality] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   // --- data ---
   const overview = useQuery({ queryKey: ["ov", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/overview`)).data });
@@ -43,6 +45,8 @@ export function Analysis() {
   const highlights = useQuery({ queryKey: ["hl", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/highlights`)).data.highlights as any[] });
   const memoryQ = useQuery({ queryKey: ["mem", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/memory`)).data.memory as any[] });
   const trajectories = useQuery({ queryKey: ["traj", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/trajectories`)).data.trajectories as any[] });
+  const heatmap = useQuery({ queryKey: ["heat", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/heatmap`)).data as { grid: number; cells: number[][]; max: number } });
+  const dwell = useQuery({ queryKey: ["dw", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/dwell`)).data.dwell as any[] });
 
   // Live processing status — polls while the job runs (spec §52: realtime feel).
   const status = useQuery({
@@ -121,10 +125,10 @@ export function Analysis() {
   }
 
   const [reportBusy, setReportBusy] = useState(false);
-  async function generateReport() {
+  async function generateReport(sections?: string[]) {
     setReportBusy(true);
     try {
-      const gen = await api.post(`/reports/${videoId}/generate`);
+      const gen = await api.post(`/reports/${videoId}/generate`, sections ? { sections } : {});
       const blob = await api.get(gen.data.download_url, { responseType: "blob" });
       const url = URL.createObjectURL(blob.data);
       const a = document.createElement("a");
@@ -143,11 +147,23 @@ export function Analysis() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const v = videoRef.current;
       if (!v) return;
+      const k = e.key.toLowerCase();
       if (e.key === " ") { e.preventDefault(); togglePlay(); }
       else if (e.key === "ArrowLeft") v.currentTime -= 5;
       else if (e.key === "ArrowRight") v.currentTime += 5;
-      else if (e.key.toLowerCase() === "j") v.currentTime -= 10;
-      else if (e.key.toLowerCase() === "l") v.currentTime += 10;
+      else if (k === "j") v.currentTime -= 10;
+      else if (k === "l") v.currentTime += 10;
+      else if (k === "k") v.pause();
+      else if (k === "b") setShowBoxes((b) => !b);
+      else if (k === "p") setShowPaths((b) => !b);
+      else if (k === "g") setShowGraph(true);
+      else if (k === "h") setTab("highlights");
+      else if (k === "m") setTab("memory");
+      else if (e.key === "/") { e.preventDefault(); setTab("search"); }
+      else if (["e", "a", "f", "s"].includes(k)) {
+        // handled where the control lives (RightPanel / subtitles)
+        window.dispatchEvent(new CustomEvent("subli-shortcut", { detail: k }));
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -183,7 +199,7 @@ export function Analysis() {
           <a href={mediaUrl(`/analysis/${videoId}/subtitles.srt`)} target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm"><Download className="h-4 w-4" /> Subtitles</Button>
           </a>
-          <Button variant="outline" size="sm" onClick={generateReport} disabled={reportBusy}>
+          <Button variant="outline" size="sm" onClick={() => setShowReport(true)} disabled={reportBusy}>
             {reportBusy ? <Spinner /> : <FileText className="h-4 w-4" />} Report
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowGraph(true)} title="Event graph">
@@ -213,6 +229,7 @@ export function Analysis() {
               people: people.data?.length ?? 0,
               ocr: ocr.data?.length ?? 0,
               memory: memoryQ.data?.length ?? 0,
+              dwell: dwell.data?.length ?? 0,
             }}
           />
           <div className="p-3">
@@ -224,6 +241,7 @@ export function Analysis() {
               ocr={ocr.data ?? []}
               highlights={highlights.data ?? []}
               memory={memoryQ.data ?? []}
+              dwell={dwell.data ?? []}
               onSeek={seek}
               videoId={videoId!}
             />
@@ -255,6 +273,7 @@ export function Analysis() {
                 {showPaths && (
                   <PathOverlay trajectories={trajectories.data ?? []} current={current} />
                 )}
+                {showHeat && heatmap.data && <HeatmapOverlay data={heatmap.data} />}
               </div>
             ) : (
               <div className="text-white/60"><Spinner className="h-6 w-6" /></div>
@@ -286,6 +305,14 @@ export function Analysis() {
                 title="Toggle movement paths"
               >
                 <Share2 className="h-4 w-4" /> Paths
+              </Button>
+              <Button
+                variant={showHeat ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowHeat((b) => !b)}
+                title="Toggle activity heatmap"
+              >
+                <Gauge className="h-4 w-4" /> Heatmap
               </Button>
               <select
                 className="rounded-md border border-line bg-surface px-2 py-1 text-xs"
@@ -325,7 +352,43 @@ export function Analysis() {
       {showQuality && (
         <QualityPanel videoId={videoId!} onClose={() => setShowQuality(false)} />
       )}
+      {showReport && (
+        <ReportBuilder busy={reportBusy}
+          onGenerate={(secs) => { generateReport(secs); setShowReport(false); }}
+          onClose={() => setShowReport(false)} />
+      )}
     </div>
+  );
+}
+
+function ReportBuilder({ onGenerate, onClose, busy }: {
+  onGenerate: (sections: string[]) => void; onClose: () => void; busy: boolean;
+}) {
+  const ALL = [
+    { id: "summary", label: "Executive Summary" },
+    { id: "timeline", label: "Event Timeline" },
+    { id: "objects", label: "Detected Objects" },
+    { id: "ocr", label: "Detected Text (OCR)" },
+  ];
+  const [sel, setSel] = useState<string[]>(ALL.map((s) => s.id));
+  const toggle = (id: string) =>
+    setSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  return (
+    <Overlay title="Build report" onClose={onClose}>
+      <p className="mb-3 text-sm text-muted">Choose the sections to include in the PDF.</p>
+      <div className="space-y-2">
+        {ALL.map((s) => (
+          <label key={s.id} className="flex items-center gap-2.5 rounded-lg border border-line p-2.5 text-sm">
+            <input type="checkbox" checked={sel.includes(s.id)} onChange={() => toggle(s.id)} />
+            {s.label}
+          </label>
+        ))}
+      </div>
+      <Button className="mt-4 w-full" disabled={busy || sel.length === 0}
+        onClick={() => onGenerate(sel)}>
+        {busy ? <Spinner /> : <FileText className="h-4 w-4" />} Generate PDF
+      </Button>
+    </Overlay>
   );
 }
 
@@ -505,6 +568,24 @@ function PathOverlay({ trajectories, current }: { trajectories: any[]; current: 
   );
 }
 
+// Activity-density heatmap from real object centroids.
+function HeatmapOverlay({ data }: { data: { grid: number; cells: number[][]; max: number } }) {
+  const { grid, cells, max } = data;
+  if (!max) return null;
+  const cell = 1000 / grid;
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox="0 0 1000 1000" preserveAspectRatio="none">
+      {cells.flatMap((row, gy) => row.map((v, gx) => {
+        if (!v) return null;
+        const a = Math.min(0.72, (v / max) * 0.72);
+        return <rect key={`${gx}-${gy}`} x={gx * cell} y={gy * cell} width={cell} height={cell}
+          fill={`rgba(220,38,38,${a})`} />;
+      }))}
+    </svg>
+  );
+}
+
 function LeftRail({ tab, setTab, counts }: {
   tab: Tab; setTab: (t: Tab) => void; counts: Record<string, number>;
 }) {
@@ -515,6 +596,7 @@ function LeftRail({ tab, setTab, counts }: {
     { id: "people", label: "People", icon: Users, n: counts.people },
     { id: "ocr", label: "Text (OCR)", icon: Type, n: counts.ocr },
     { id: "memory", label: "Memory", icon: GitCompareArrows, n: counts.memory },
+    { id: "dwell", label: "Dwell", icon: Clock3, n: counts.dwell },
     { id: "search", label: "Search", icon: Search },
   ];
   return (
@@ -539,7 +621,7 @@ function LeftRail({ tab, setTab, counts }: {
   );
 }
 
-function PanelList({ tab, events, objects, people, ocr, onSeek, videoId, highlights, memory }: {
+function PanelList({ tab, events, objects, people, ocr, onSeek, videoId, highlights, memory, dwell }: {
   tab: Tab;
   events: Event[];
   objects?: { objects: DetectedObject[]; counts: Record<string, number> };
@@ -547,10 +629,30 @@ function PanelList({ tab, events, objects, people, ocr, onSeek, videoId, highlig
   ocr: OcrResult[];
   highlights: any[];
   memory: any[];
+  dwell: any[];
   onSeek: (t: number) => void;
   videoId: string;
 }) {
   if (tab === "search") return <SearchPanel videoId={videoId} onSeek={onSeek} />;
+
+  if (tab === "dwell")
+    return dwell.length ? (
+      <ul className="space-y-1.5">
+        {dwell.map((d, i) => (
+          <li key={i}>
+            <button onClick={() => onSeek(d.first_seen)} className="w-full rounded-lg border border-line p-2.5 text-left hover:bg-bg">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">{d.label}</span>
+                {d.loitering && <Badge variant="warn">loitering</Badge>}
+              </div>
+              <p className="mt-0.5 text-xs text-muted">
+                {d.dwell}s present · {formatTime(d.first_seen)}–{formatTime(d.last_seen)}
+              </p>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : <EmptyState title="No dwell data" hint="Tracked objects with movement appear here." />;
 
   if (tab === "highlights")
     return highlights.length ? (
@@ -776,8 +878,47 @@ function RightPanel({ videoId, captions, current, onSeek }: {
     setTimeout(() => setAdded(false), 1500);
   }
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  const summary = useQuery({
+    queryKey: ["sum", videoId],
+    queryFn: async () => (await api.get(`/analysis/${videoId}/summary`)).data as
+      { summary: string; suggested_questions: string[] },
+  });
+
+  // keyboard shortcuts routed from the player (E/A/F/S)
+  useEffect(() => {
+    const onShortcut = ((e: CustomEvent<string>) => {
+      const k = e.detail;
+      if (k === "e") addEvidence();
+      else if (k === "a") inputRef.current?.focus();
+      else if (k === "f") findStory();
+      else if (k === "s") window.open(mediaUrl(`/analysis/${videoId}/subtitles.srt`), "_blank");
+    }) as EventListener;
+    window.addEventListener("subli-shortcut", onShortcut);
+    return () => window.removeEventListener("subli-shortcut", onShortcut);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId, current, currentCaption]);
+
   return (
     <div className="space-y-4 p-4">
+      {summary.data?.summary && (
+        <div>
+          <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+            <Sparkles className="h-4 w-4" /> AI Summary
+          </h3>
+          <p className="rounded-lg border border-line bg-bg p-3 text-sm">{summary.data.summary}</p>
+          {summary.data.suggested_questions?.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {summary.data.suggested_questions.map((sq) => (
+                <button key={sq} onClick={() => ask(sq)}
+                  className="rounded-full border border-line px-2 py-0.5 text-xs text-muted hover:bg-bg">
+                  {sq}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <div>
         <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
           <ScanEye className="h-4 w-4" /> Current moment
@@ -804,7 +945,7 @@ function RightPanel({ videoId, captions, current, onSeek }: {
           <MessageSquare className="h-4 w-4" /> Ask Subli
         </h3>
         <div className="flex gap-2">
-          <Input placeholder="What happened?" value={q}
+          <Input ref={inputRef} placeholder="What happened?" value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && ask()} />
           <Button size="icon" onClick={() => ask()}>

@@ -39,8 +39,12 @@ def _gather(video_id: str, uid: str) -> dict:
             "subjects": subjects, "story": story}
 
 
-def generate(video_id: str, uid: str) -> Path:
+ALL_SECTIONS = ["summary", "timeline", "objects", "ocr"]
+
+
+def generate(video_id: str, uid: str, sections: list | None = None) -> Path:
     data = _gather(video_id, uid)
+    data["_sections"] = set(sections) if sections else set(ALL_SECTIONS)
     out_dir = config.ARTIFACT_DIR / uid / video_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -87,12 +91,15 @@ def _render_pdf(path: Path, d: dict) -> None:
         ("FONTSIZE", (0, 0), (-1, -1), 9)]))
     flow += [t, Spacer(1, 0.5 * cm)]
 
-    flow.append(Paragraph("Executive Summary", styles["Heading2"]))
-    flow.append(Paragraph(d["story"] or "No significant events detected.",
-                          styles["Normal"]))
-    flow.append(Spacer(1, 0.4 * cm))
+    sec = d.get("_sections", set(ALL_SECTIONS))
 
-    if d["events"]:
+    if "summary" in sec:
+        flow.append(Paragraph("Executive Summary", styles["Heading2"]))
+        flow.append(Paragraph(d["story"] or "No significant events detected.",
+                              styles["Normal"]))
+        flow.append(Spacer(1, 0.4 * cm))
+
+    if "timeline" in sec and d["events"]:
         flow.append(Paragraph("Event Timeline", styles["Heading2"]))
         rows = [["Time", "Event", "Description"]] + [
             [_fmt_ts(e["start_time"]), e["type"].replace("_", " ").title(),
@@ -105,7 +112,7 @@ def _render_pdf(path: Path, d: dict) -> None:
             ("FONTSIZE", (0, 0), (-1, -1), 8)]))
         flow += [et, Spacer(1, 0.4 * cm)]
 
-    if d["counts"]:
+    if "objects" in sec and d["counts"]:
         flow.append(Paragraph("Detected Objects", styles["Heading2"]))
         rows = [["Type", "Count"]] + [[k, str(v)] for k, v in
                                       sorted(d["counts"].items(), key=lambda x: -x[1])]
@@ -115,7 +122,7 @@ def _render_pdf(path: Path, d: dict) -> None:
             ("FONTSIZE", (0, 0), (-1, -1), 9)]))
         flow += [ot, Spacer(1, 0.4 * cm)]
 
-    if d["ocr"]:
+    if "ocr" in sec and d["ocr"]:
         flow.append(Paragraph("Detected Text (OCR)", styles["Heading2"]))
         for o in d["ocr"][:20]:
             flow.append(Paragraph(f'{_fmt_ts(o["ts"])} — "{o["text"]}"', styles["Normal"]))

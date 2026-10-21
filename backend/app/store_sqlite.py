@@ -13,7 +13,7 @@ from .db import cursor
 
 _JSON_COLS = {
     "bbox", "trajectory", "state", "source_frames", "related_objects",
-    "related_subjects", "embedding", "polygon", "rule",
+    "related_subjects", "embedding", "polygon", "rule", "tags",
 }
 
 
