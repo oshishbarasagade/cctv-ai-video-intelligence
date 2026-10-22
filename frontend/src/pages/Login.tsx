@@ -1,15 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Sparkles } from "lucide-react";
 import { useAuth } from "@/store/auth";
-import { api } from "@/lib/api";
 import { supabase, googleAuthAvailable } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/misc";
 
 export function Login() {
-  const { login, signup, completeOnboarding } = useAuth();
+  const { login, signup } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
@@ -17,22 +15,6 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [demoBusy, setDemoBusy] = useState(false);
-
-  const tryDemo = async () => {
-    setError("");
-    setDemoBusy(true);
-    try {
-      // Spin up a throwaway account and seed a ready analysis (spec §57).
-      await signup("Demo User", `demo_${Date.now()}@subli.ai`, "demo123456");
-      await completeOnboarding({ full_name: "Demo User", use_case: "video" });
-      const { data } = await api.post("/demo/seed");
-      navigate(`/analysis/${data.video_id}`);
-    } catch (err) {
-      setError((err as Error).message);
-      setDemoBusy(false);
-    }
-  };
 
   const continueWithGoogle = async () => {
     setError("");
@@ -133,13 +115,6 @@ export function Login() {
               {mode === "login" ? "Sign in" : "Create account"}
             </Button>
           </form>
-
-          <div className="my-4 flex items-center gap-3 text-xs text-muted">
-            <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
-          </div>
-          <Button variant="outline" className="w-full" onClick={tryDemo} disabled={demoBusy}>
-            {demoBusy ? <><Spinner /> Preparing demo…</> : <><Sparkles className="h-4 w-4" /> Try a live demo</>}
-          </Button>
 
           <p className="mt-4 text-center text-sm text-muted">
             {mode === "login" ? "No account? " : "Already have an account? "}
