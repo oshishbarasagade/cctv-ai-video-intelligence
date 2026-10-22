@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutGrid, Video, LogOut, Sparkles, Radio, MonitorPlay, GitCompareArrows } from "lucide-react";
+import { LayoutGrid, LogOut, Sparkles, Radio, MonitorPlay, GitCompareArrows } from "lucide-react";
 import { useAuth } from "@/store/auth";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -21,9 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* sidebar */}
       <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-surface md:flex">
         <div className="flex h-14 items-center gap-2 border-b border-line px-5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-white">
-            <Video className="h-4 w-4" />
-          </div>
+          <img src="/brand-logo.png" alt="Subli" className="h-7 w-7 rounded-md" />
           <span className="text-lg font-bold tracking-tight">Subli</span>
         </div>
         <nav className="flex-1 space-y-1 p-3">
@@ -36,8 +34,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   active
-                    ? "bg-ink text-white"
-                    : "text-muted hover:bg-line/60 hover:text-ink"
+                    ? "bg-brand text-white shadow-sm"
+                    : "text-muted hover:bg-brand-50 hover:text-brand"
                 )}
               >
                 <n.icon className="h-4 w-4" />
@@ -69,7 +67,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-between border-b border-line bg-surface/80 px-5 backdrop-blur md:hidden">
           <Link to="/dashboard" className="flex items-center gap-2">
-            <Video className="h-5 w-5" />
+            <img src="/brand-logo.png" alt="Subli" className="h-6 w-6 rounded" />
             <span className="font-bold">Subli</span>
           </Link>
           <Button variant="ghost" size="icon" onClick={() => { logout(); navigate("/login"); }}>

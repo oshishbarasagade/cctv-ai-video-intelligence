@@ -12,7 +12,13 @@ export default {
         ok: "#16A34A",
         warn: "#F59E0B",
         danger: "#DC2626",
-        accent: "#2563EB",
+        // Brand — sampled from the Subli logo (#E11D48, crimson-rose)
+        accent: "#E11D48",
+        brand: "#E11D48",
+        "brand-dark": "#BE123C",
+        "brand-light": "#F43F5E",
+        "brand-50": "#FFF1F3",
+        "brand-100": "#FFE4E8",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],

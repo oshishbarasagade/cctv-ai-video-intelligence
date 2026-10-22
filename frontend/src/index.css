@@ -44,3 +44,98 @@ body {
 .animate-fade-in {
   animation: fade-in 0.25s ease both;
 }
+
+/* ============================================================
+   Premium landing-page animations (self-contained)
+   ============================================================ */
+
+/* Scroll-reveal: start hidden, add .is-visible to animate in */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Drifting aurora blobs behind the hero */
+@keyframes aurora {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  33%  { transform: translate3d(6%, -4%, 0) scale(1.12); }
+  66%  { transform: translate3d(-5%, 5%, 0) scale(0.95); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+.animate-aurora { animation: aurora 18s ease-in-out infinite; }
+
+/* Gentle float */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.animate-float { animation: float-y 6s ease-in-out infinite; }
+
+/* Shimmering gradient text */
+@keyframes shimmer {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.text-shimmer {
+  background-size: 200% auto;
+  animation: shimmer 6s linear infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Infinite marquee track */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.animate-marquee { animation: marquee 26s linear infinite; }
+
+/* SVG path draw (trajectory) */
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Vertical scanning line over the CCTV mock */
+@keyframes scan {
+  0%   { transform: translateY(-10%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(1000%); opacity: 0; }
+}
+.animate-scan { animation: scan 3.2s ease-in-out infinite; }
+
+/* Detection box pop-in + soft breathing glow */
+@keyframes box-pop {
+  0%   { opacity: 0; transform: scale(0.85); }
+  60%  { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-box { animation: box-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.animate-glow { animation: glow-pulse 3s ease-in-out infinite; }
+
+/* Slow conic spin for the orbital ring */
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin-slow 22s linear infinite; }
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .animate-aurora, .animate-float, .text-shimmer, .animate-marquee,
+  .animate-scan, .animate-box, .animate-glow, .animate-spin-slow {
+    animation: none !important;
+  }
+}

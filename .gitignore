@@ -21,3 +21,12 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Research paper artifacts & temp render files (not part of the app)
+/*.docx
+/*.pdf
+~$*
+/_pg/
+/arch.png
+/fig2.png
+/fig3.png

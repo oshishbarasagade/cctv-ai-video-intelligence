@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Video, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useAuth } from "@/store/auth";
 import { api } from "@/lib/api";
 import { supabase, googleAuthAvailable } from "@/lib/supabase";
@@ -65,9 +65,7 @@ export function Login() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <Link to="/" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-ink text-white">
-            <Video className="h-4 w-4" />
-          </div>
+          <img src="/brand-logo.png" alt="Subli" className="h-9 w-9 drop-shadow-[0_0_12px_rgba(225,29,72,0.4)]" />
           <span className="text-xl font-bold tracking-tight">Subli</span>
         </Link>
 

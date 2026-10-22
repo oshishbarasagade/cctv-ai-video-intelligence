@@ -178,12 +178,12 @@ export function Analysis() {
     <div className="flex h-screen flex-col bg-bg">
       {/* top bar */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface px-4">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <p className="text-sm font-semibold leading-tight">{video?.original_name}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight">{video?.original_name}</p>
             {processing ? (
               <p className="flex items-center gap-1.5 text-xs text-accent">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
@@ -196,7 +196,7 @@ export function Analysis() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <a href={mediaUrl(`/analysis/${videoId}/subtitles.srt`)} target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm"><Download className="h-4 w-4" /> Subtitles</Button>
           </a>
@@ -221,7 +221,7 @@ export function Analysis() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[240px_1fr_340px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_340px]">
         {/* left rail */}
         <aside className="hidden overflow-y-auto border-r border-line bg-surface lg:block">
           <LeftRail
@@ -253,7 +253,7 @@ export function Analysis() {
         </aside>
 
         {/* center: player + timeline */}
-        <section className="flex min-h-0 flex-col overflow-hidden">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
           <div className="flex flex-1 items-center justify-center bg-ink/95 p-4">
             {videoSrc ? (
               <div className="relative inline-flex max-h-full max-w-full">
@@ -1046,12 +1046,12 @@ function RightPanel({ videoId, captions, current, onSeek }: {
         </h3>
 
         {/* ask about a specific time */}
-        <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-bg p-2">
-          <Clock3 className="h-4 w-4 text-muted" />
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-bg p-2">
+          <Clock3 className="h-4 w-4 shrink-0 text-muted" />
           <input value={timeStr} onChange={(e) => setTimeStr(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && askAtTime()}
-            placeholder="mm:ss" className="w-16 bg-transparent font-mono text-sm outline-none" />
-          <Button size="sm" variant="outline" onClick={askAtTime}>What happened?</Button>
+            placeholder="mm:ss" className="w-14 min-w-0 bg-transparent font-mono text-sm outline-none" />
+          <Button size="sm" variant="outline" onClick={askAtTime}>Ask</Button>
           <Button size="sm" variant="ghost" className="ml-auto text-xs"
             onClick={() => setTimeStr(formatTime(current))}>use current</Button>
         </div>

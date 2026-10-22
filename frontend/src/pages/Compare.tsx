@@ -59,7 +59,7 @@ export function Compare() {
           <div className="mt-6"><EmptyState title="Need at least two analyzed videos" hint="Analyze more videos to compare them." /></div>
         ) : (
           <>
-            <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <div className="mt-6 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
               <select value={a} onChange={(e) => setA(e.target.value)}
                 className="rounded-lg border border-line bg-surface px-3 py-2 text-sm">
                 <option value="">Select video A…</option>
