@@ -1,12 +1,29 @@
 import axios from "axios";
+import { supabase } from "./supabase";
 
 const baseURL = import.meta.env.VITE_API_BASE || "/api";
 
 export const api = axios.create({ baseURL });
 
-// Attach the bearer token from localStorage on every request.
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("subli_token");
+// Attach the bearer token on every request. When Supabase is configured we use
+// its (auto-refreshed) access token; otherwise fall back to the stored token.
+api.interceptors.request.use(async (config) => {
+  let token: string | null = null;
+  if (supabase) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      token = data.session?.access_token ?? null;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (!token) {
+    try {
+      token = localStorage.getItem("subli_token");
+    } catch {
+      /* ignore */
+    }
+  }
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
