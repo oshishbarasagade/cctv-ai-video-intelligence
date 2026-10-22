@@ -107,8 +107,8 @@ class ClaudeReasoningService:
                 story = txt
         return {"answer": story, "citations": cites}
 
-    def explain_moment(self, m: Dict) -> str:
-        """One grounded sentence about a single moment (real data only)."""
+    @staticmethod
+    def _moment_facts(m: Dict) -> str:
         parts = []
         if m.get("caption"):
             parts.append(f"scene: {m['caption']}")
@@ -120,7 +120,13 @@ class ClaudeReasoningService:
             parts.append("text: " + ", ".join(f'"{t}"' for t in m["ocr"][:5]))
         if m.get("state"):
             parts.append("state: " + ", ".join(f"{k}={v}" for k, v in m["state"].items()))
-        facts = "; ".join(parts) if parts else ""
+        if m.get("events"):
+            parts.append("events: " + "; ".join(e.get("description", "") for e in m["events"][:4]))
+        return "; ".join(parts)
+
+    def explain_moment(self, m: Dict) -> str:
+        """One grounded sentence about a single moment (real data only)."""
+        facts = self._moment_facts(m)
         if not facts:
             return CANNOT
         base = f"At {_fmt_ts(m['ts'])} — {facts}."
@@ -131,6 +137,23 @@ class ClaudeReasoningService:
             if txt:
                 return txt
         return base
+
+    def answer_at_moment(self, question: str, m: Dict) -> Dict:
+        """Answer a question about a specific timestamp, grounded in that
+        moment's real data."""
+        facts = self._moment_facts(m)
+        if not facts:
+            return {"answer": f"At {_fmt_ts(m['ts'])}, I couldn't determine that "
+                    "from the analyzed footage.", "citations": [{"ts": m["ts"]}]}
+        cite = [{"ts": m["ts"]}]
+        if self.llm_available:
+            txt = self._llm(self._SYSTEM,
+                            f"The user asks about the moment at {_fmt_ts(m['ts'])}: "
+                            f"\"{question}\". Answer using ONLY these facts, and keep "
+                            f"the timestamp:\n{facts}")
+            if txt:
+                return {"answer": txt, "citations": cite}
+        return {"answer": f"At {_fmt_ts(m['ts'])} — {facts}.", "citations": cite}
 
     def compare_states(self, a: Optional[Dict], b: Optional[Dict],
                        ts_a: float, ts_b: float) -> Dict:

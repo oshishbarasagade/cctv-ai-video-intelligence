@@ -46,6 +46,7 @@ class ProjectUpdate(BaseModel):
 class AskRequest(BaseModel):
     video_id: str
     question: str = Field(min_length=1)
+    ts: Optional[float] = None       # ask about a specific moment
 
 
 class WhatChangedRequest(BaseModel):

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Badge, Spinner, EmptyState } from "@/components/ui/misc";
 import { cn, formatTime } from "@/lib/utils";
 import type {
-  Answer, Caption, DetectedObject, Event, OcrResult,
+  Caption, DetectedObject, Event, OcrResult,
   SearchResult, Subject, Video,
 } from "@/types";
 
@@ -882,7 +882,9 @@ function RightPanel({ videoId, captions, current, onSeek }: {
   videoId: string; captions: Caption[]; current: number; onSeek: (t: number) => void;
 }) {
   const [q, setQ] = useState("");
-  const [answer, setAnswer] = useState<Answer | null>(null);
+  const [timeStr, setTimeStr] = useState("");
+  const [messages, setMessages] = useState<
+    { role: "user" | "assistant"; text: string; citations?: { ts: number }[] }[]>([]);
   const [busy, setBusy] = useState(false);
   const [added, setAdded] = useState(false);
 
@@ -917,20 +919,35 @@ function RightPanel({ videoId, captions, current, onSeek }: {
     }
   }
 
-  async function ask(question?: string) {
+  async function ask(question?: string, ts?: number) {
     const text = question ?? q;
     if (!text.trim()) return;
+    setMessages((m) => [...m, { role: "user", text }]);
+    setQ("");
     setBusy(true);
-    setAnswer(null);
     try {
-      const { data } = await api.post("/chat/ask", { video_id: videoId, question: text });
-      setAnswer(data);
+      const { data } = await api.post("/chat/ask", { video_id: videoId, question: text, ts });
+      setMessages((m) => [...m, { role: "assistant", text: data.answer, citations: data.citations }]);
+    } catch {
+      setMessages((m) => [...m, { role: "assistant", text: "Something went wrong." }]);
     } finally { setBusy(false); }
   }
+  function askAtTime() {
+    const t = timeStr.trim();
+    if (!t) return;
+    const parts = t.split(":").map(Number);
+    const ts = parts.length === 2 ? parts[0] * 60 + parts[1] : Number(t);
+    if (isNaN(ts)) return;
+    setTimeStr("");
+    ask(`What happened at ${t}?`, ts);
+  }
   async function findStory() {
-    setBusy(true); setAnswer(null);
-    try { setAnswer((await api.post(`/chat/find-story?video_id=${videoId}`)).data); }
-    finally { setBusy(false); }
+    setMessages((m) => [...m, { role: "user", text: "Find the story" }]);
+    setBusy(true);
+    try {
+      const d = (await api.post(`/chat/find-story?video_id=${videoId}`)).data;
+      setMessages((m) => [...m, { role: "assistant", text: d.answer, citations: d.citations }]);
+    } finally { setBusy(false); }
   }
   async function addEvidence() {
     // needs project_id — fetch via overview? Simplify: derive from video's project via analysis overview is video only.
@@ -1027,8 +1044,43 @@ function RightPanel({ videoId, captions, current, onSeek }: {
         <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
           <MessageSquare className="h-4 w-4" /> Ask Subli
         </h3>
+
+        {/* ask about a specific time */}
+        <div className="mb-2 flex items-center gap-2 rounded-lg border border-line bg-bg p-2">
+          <Clock3 className="h-4 w-4 text-muted" />
+          <input value={timeStr} onChange={(e) => setTimeStr(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && askAtTime()}
+            placeholder="mm:ss" className="w-16 bg-transparent font-mono text-sm outline-none" />
+          <Button size="sm" variant="outline" onClick={askAtTime}>What happened?</Button>
+          <Button size="sm" variant="ghost" className="ml-auto text-xs"
+            onClick={() => setTimeStr(formatTime(current))}>use current</Button>
+        </div>
+
+        {/* conversation thread */}
+        {messages.length > 0 && (
+          <div className="mb-2 max-h-72 space-y-2 overflow-y-auto rounded-lg border border-line p-2">
+            {messages.map((msg, i) => (
+              <div key={i} className={cn("rounded-lg px-2.5 py-1.5 text-sm",
+                msg.role === "user" ? "bg-ink text-white" : "bg-bg")}>
+                <p className="whitespace-pre-wrap">{msg.text}</p>
+                {msg.citations && msg.citations.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {msg.citations.map((c, j) => (
+                      <button key={j} onClick={() => onSeek(c.ts)}
+                        className="rounded-full bg-accent/10 px-2 py-0.5 font-mono text-xs text-accent hover:bg-accent/20">
+                        {formatTime(c.ts)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {busy && <div className="flex items-center gap-2 px-2.5 text-xs text-muted"><Spinner /> thinking…</div>}
+          </div>
+        )}
+
         <div className="flex gap-2">
-          <Input ref={inputRef} placeholder="What happened?" value={q}
+          <Input ref={inputRef} placeholder="Ask anything… or a time like 0:45" value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && ask()} />
           <Button size="icon" onClick={() => ask()}>
@@ -1041,34 +1093,10 @@ function RightPanel({ videoId, captions, current, onSeek }: {
           <Button variant="subtle" size="sm" onClick={findStory}>
             <Sparkles className="h-3.5 w-3.5" /> Find the Story
           </Button>
+          {messages.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => setMessages([])}>Clear</Button>
+          )}
         </div>
-
-        {answer && (
-          <div className="animate-fade-in mt-3 rounded-lg border border-line p-3">
-            <p className="whitespace-pre-wrap text-sm">{answer.answer}</p>
-            {answer.citations && answer.citations.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {answer.citations.map((c, i) => (
-                  <button key={i} onClick={() => onSeek(c.ts)}
-                    className="rounded-full bg-accent/10 px-2 py-0.5 font-mono text-xs text-accent hover:bg-accent/20">
-                    {formatTime(c.ts)}
-                  </button>
-                ))}
-              </div>
-            )}
-            {answer.changes && (
-              <div className="mt-2 space-y-1">
-                {answer.changes.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs">
-                    <GitCompareArrows className="h-3 w-3 text-muted" />
-                    <span className="capitalize">{c.field}:</span>
-                    <span className="text-muted">{String(c.before)} → {String(c.after)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
