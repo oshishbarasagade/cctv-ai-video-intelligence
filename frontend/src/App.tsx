@@ -11,6 +11,7 @@ import { Project } from "@/pages/Project";
 import { Analysis } from "@/pages/Analysis";
 import { Live } from "@/pages/Live";
 import { CommandCenter } from "@/pages/CommandCenter";
+import { Compare } from "@/pages/Compare";
 import { Presentation } from "@/pages/Presentation";
 import { AuthCallback } from "@/pages/AuthCallback";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/present/:videoId" element={<ProtectedRoute><Presentation /></ProtectedRoute>} />
           <Route path="/live" element={<ProtectedRoute><Live /></ProtectedRoute>} />
           <Route path="/command-center" element={<ProtectedRoute><CommandCenter /></ProtectedRoute>} />
+          <Route path="/compare" element={<ProtectedRoute><Compare /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         {user && <CommandPalette />}

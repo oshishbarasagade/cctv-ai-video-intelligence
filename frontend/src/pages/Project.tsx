@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { UploadCloud, ArrowLeft, Film, Play, RotateCw, Search } from "lucide-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { UploadCloud, ArrowLeft, Film, Play, RotateCw, Search, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppShell, PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -224,6 +224,8 @@ export function Project() {
             </div>
           </>
         )}
+
+        <EvidenceSection projectId={projectId!} onOpen={(vid) => navigate(`/analysis/${vid}`)} />
       </div>
     </AppShell>
   );
@@ -268,6 +270,74 @@ function ProjectSearch({ projectId, onOpen }: { projectId: string; onOpen: (vid:
           </ul>
         )
       )}
+    </div>
+  );
+}
+
+function EvidenceSection({ projectId, onOpen }: { projectId: string; onOpen: (vid: string) => void }) {
+  const qc = useQueryClient();
+  const ev = useQuery({
+    queryKey: ["evidence", projectId],
+    queryFn: async () => (await api.get(`/evidence/${projectId}`)).data.evidence as any[],
+  });
+  const patch = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => api.patch(`/evidence/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["evidence", projectId] }),
+  });
+  const del = useMutation({
+    mutationFn: async (id: string) => api.delete(`/evidence/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["evidence", projectId] }),
+  });
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(ev.data ?? [], null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `subli-evidence-${projectId}.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (!ev.data || ev.data.length === 0) return null;
+
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-muted">Evidence Board · {ev.data.length}</h2>
+        <Button variant="outline" size="sm" onClick={exportJson}>Export JSON</Button>
+      </div>
+      <div className="space-y-2">
+        {ev.data.map((e, i) => (
+          <div key={e.id} className="rounded-xl border border-line bg-surface p-3">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs text-muted">#{String(i + 1).padStart(3, "0")}</span>
+              {e.ts != null && <span className="font-mono text-xs text-accent">{formatTime(e.ts)}</span>}
+              <input
+                defaultValue={e.title || e.description || ""}
+                onBlur={(ev2) => { if (ev2.target.value !== (e.title || "")) patch.mutate({ id: e.id, data: { title: ev2.target.value } }); }}
+                placeholder="Title"
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium outline-none"
+              />
+              {e.video_id && <Button variant="ghost" size="sm" onClick={() => onOpen(e.video_id)}>Open</Button>}
+              <Button variant="ghost" size="icon" onClick={() => del.mutate(e.id)}><Trash2 className="h-4 w-4 text-muted" /></Button>
+            </div>
+            <input
+              defaultValue={e.note || ""}
+              onBlur={(ev2) => { if (ev2.target.value !== (e.note || "")) patch.mutate({ id: e.id, data: { note: ev2.target.value } }); }}
+              placeholder="Add a note…"
+              className="mt-2 w-full rounded-lg border border-line bg-bg px-2.5 py-1.5 text-xs outline-none"
+            />
+            <input
+              defaultValue={(e.tags || []).join(", ")}
+              onBlur={(ev2) => {
+                const tags = ev2.target.value.split(",").map((t) => t.trim()).filter(Boolean);
+                patch.mutate({ id: e.id, data: { tags } });
+              }}
+              placeholder="tags, comma, separated"
+              className="mt-1.5 w-full bg-transparent text-xs text-muted outline-none"
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

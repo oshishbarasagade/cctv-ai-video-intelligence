@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LayoutGrid, Video, LogOut, Sparkles, Radio, MonitorPlay } from "lucide-react";
+import { LayoutGrid, Video, LogOut, Sparkles, Radio, MonitorPlay, GitCompareArrows } from "lucide-react";
 import { useAuth } from "@/store/auth";
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
@@ -8,6 +8,7 @@ const nav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { to: "/live", label: "Live", icon: Radio },
   { to: "/command-center", label: "Command Center", icon: MonitorPlay },
+  { to: "/compare", label: "Compare", icon: GitCompareArrows },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

@@ -34,6 +34,7 @@ export function Analysis() {
   const [showGraph, setShowGraph] = useState(false);
   const [showQuality, setShowQuality] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showInvestigate, setShowInvestigate] = useState(false);
 
   // --- data ---
   const overview = useQuery({ queryKey: ["ov", videoId], queryFn: async () => (await api.get(`/analysis/${videoId}/overview`)).data });
@@ -202,6 +203,9 @@ export function Analysis() {
           <Button variant="outline" size="sm" onClick={() => setShowReport(true)} disabled={reportBusy}>
             {reportBusy ? <Spinner /> : <FileText className="h-4 w-4" />} Report
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowInvestigate(true)} title="Investigation">
+            <Flag className="h-4 w-4" /> Investigate
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowGraph(true)} title="Event graph">
             <Share2 className="h-4 w-4" /> Graph
           </Button>
@@ -357,7 +361,57 @@ export function Analysis() {
           onGenerate={(secs) => { generateReport(secs); setShowReport(false); }}
           onClose={() => setShowReport(false)} />
       )}
+      {showInvestigate && (
+        <Investigation videoId={videoId!}
+          highlights={highlights.data ?? []} events={events.data ?? []}
+          onSeek={(t) => { seek(t); }} onClose={() => setShowInvestigate(false)} />
+      )}
     </div>
+  );
+}
+
+function Investigation({ videoId, highlights, events, onSeek, onClose }: {
+  videoId: string; highlights: any[]; events: Event[];
+  onSeek: (t: number) => void; onClose: () => void;
+}) {
+  const moments = [
+    ...highlights.map((h) => ({ ts: h.ts, label: h.title, description: h.description })),
+    ...events.map((e) => ({ ts: e.start_time, label: e.type.replace(/_/g, " "), description: e.description || "" })),
+  ].sort((a, b) => a.ts - b.ts);
+  const [sel, setSel] = useState<number[]>([]);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const toggle = (i: number) => setSel((s) => s.includes(i) ? s.filter((x) => x !== i) : [...s, i]);
+
+  async function analyze() {
+    setBusy(true); setAnswer(null);
+    try {
+      const items = sel.map((i) => moments[i]);
+      const { data } = await api.post("/chat/investigate", { video_id: videoId, items });
+      setAnswer(data.answer);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Overlay title="Investigation Workspace" onClose={onClose}>
+      <p className="mb-3 text-sm text-muted">Select the moments relevant to your investigation, then analyze only those.</p>
+      <div className="max-h-72 space-y-1.5 overflow-y-auto">
+        {moments.length === 0 ? <EmptyState title="No analyzed data available." /> :
+          moments.map((m, i) => (
+            <label key={i} className="flex items-center gap-2.5 rounded-lg border border-line p-2.5 text-sm">
+              <input type="checkbox" checked={sel.includes(i)} onChange={() => toggle(i)} />
+              <button className="font-mono text-xs text-accent" onClick={(e) => { e.preventDefault(); onSeek(m.ts); }}>{formatTime(m.ts)}</button>
+              <span className="min-w-0 flex-1 truncate">{m.description || m.label}</span>
+            </label>
+          ))}
+      </div>
+      <Button className="mt-4 w-full" disabled={busy || sel.length === 0} onClick={analyze}>
+        {busy ? <Spinner /> : <Sparkles className="h-4 w-4" />} Analyze {sel.length} selected
+      </Button>
+      {answer && (
+        <div className="animate-fade-in mt-3 rounded-lg border border-line bg-bg p-3 text-sm whitespace-pre-wrap">{answer}</div>
+      )}
+    </Overlay>
   );
 }
 
@@ -850,6 +904,19 @@ function RightPanel({ videoId, captions, current, onSeek }: {
     }
   }
 
+  const [similar, setSimilar] = useState<any[] | null>(null);
+  const [similarBusy, setSimilarBusy] = useState(false);
+  async function findSimilar() {
+    setSimilarBusy(true);
+    setSimilar(null);
+    try {
+      const { data } = await api.get(`/analysis/${videoId}/similar`, { params: { ts: current } });
+      setSimilar(data.results);
+    } finally {
+      setSimilarBusy(false);
+    }
+  }
+
   async function ask(question?: string) {
     const text = question ?? q;
     if (!text.trim()) return;
@@ -934,9 +1001,25 @@ function RightPanel({ videoId, captions, current, onSeek }: {
           <Button variant="outline" size="sm" className="flex-1" onClick={explainMoment} disabled={explainBusy}>
             {explainBusy ? <Spinner /> : <ScanEye className="h-3.5 w-3.5" />} Explain
           </Button>
+          <Button variant="outline" size="sm" className="flex-1" onClick={findSimilar} disabled={similarBusy}>
+            {similarBusy ? <Spinner /> : <Search className="h-3.5 w-3.5" />} Similar
+          </Button>
         </div>
         {explain && (
           <div className="animate-fade-in mt-2 rounded-lg border border-line bg-bg p-3 text-sm">{explain}</div>
+        )}
+        {similar && (
+          <div className="animate-fade-in mt-2 space-y-1">
+            {similar.length === 0 ? <p className="text-xs text-muted">No similar frames.</p> :
+              similar.slice(0, 5).map((s, i) => (
+                <button key={i} onClick={() => onSeek(s.ts)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-line p-2 text-left text-xs hover:bg-bg">
+                  <span className="font-mono text-accent">{formatTime(s.ts)}</span>
+                  <span className="min-w-0 flex-1 truncate">{s.content}</span>
+                  <span className="text-muted">{Math.round(s.relevance * 100)}%</span>
+                </button>
+              ))}
+          </div>
         )}
       </div>
 
