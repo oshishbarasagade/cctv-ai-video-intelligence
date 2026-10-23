@@ -47,10 +47,11 @@ async def detect_frame(
     res = model.predict(img, verbose=False, conf=max(0.1, min(conf, 0.95)))[0]
     dets = []
     names = res.names
+    # Live "scan" mode: return ALL detected object classes (with their names),
+    # not just the surveillance subset — so the user can point the camera at
+    # anything (bottle, cup, laptop, book, phone, person, …) and see it labelled.
     for box in res.boxes:
         name = names[int(box.cls)]
-        if name not in tracking._KEEP:
-            continue
         x1, y1, x2, y2 = box.xyxy[0].tolist()
         dets.append({
             "type": tracking._ALIAS.get(name, name),
