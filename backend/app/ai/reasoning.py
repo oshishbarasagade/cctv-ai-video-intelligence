@@ -48,7 +48,7 @@ class ClaudeReasoningService:
         if self.claude:  # pragma: no cover - needs a real key
             try:
                 msg = self.claude.messages.create(
-                    model="claude-3-5-sonnet-latest", max_tokens=max_tokens,
+                    model=config.CLAUDE_MODEL, max_tokens=max_tokens,
                     system=system, messages=[{"role": "user", "content": prompt}])
                 return msg.content[0].text
             except Exception as exc:

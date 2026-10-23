@@ -586,11 +586,26 @@ const BOX_COLORS: Record<string, string> = {
 function BoxOverlay({ objects, current, vw, vh }: {
   objects: DetectedObject[]; current: number; vw: number; vh: number;
 }) {
-  // Show detections within a small time window around the current frame.
-  const win = 0.6;
-  const boxes = objects.filter(
-    (o) => o.bbox && Math.abs(o.ts - current) <= win
-  );
+  // Snap to the SINGLE nearest analysed frame and draw only that frame's boxes,
+  // so a person gets one clean box instead of several stacked ones from nearby frames.
+  const withBox = objects.filter((o) => o.bbox && o.bbox.length === 4);
+  if (withBox.length === 0) return null;
+
+  let nearestTs = withBox[0].ts;
+  let best = Infinity;
+  for (const o of withBox) {
+    const d = Math.abs(o.ts - current);
+    if (d < best) { best = d; nearestTs = o.ts; }
+  }
+  // Don't show stale boxes when the nearest frame is far from the playhead.
+  if (best > 1.5) return null;
+
+  const boxes = withBox.filter((o) => Math.abs(o.ts - nearestTs) < 0.05);
+
+  const sw = Math.max(vw, vh) / 420;      // thinner stroke
+  const fs = Math.round(vh * 0.026);      // smaller label
+  const labelH = fs * 1.35;
+
   return (
     <svg
       className="pointer-events-none absolute inset-0 h-full w-full"
@@ -599,16 +614,18 @@ function BoxOverlay({ objects, current, vw, vh }: {
     >
       {boxes.map((o) => {
         const [x, y, w, h] = o.bbox!;
-        const color = BOX_COLORS[o.type] || "#e5e7eb";
+        const color = BOX_COLORS[o.type] || "#22c55e";
+        const label = `${o.type}${o.confidence ? " " + Math.round(o.confidence * 100) + "%" : ""}`;
+        const labelW = label.length * fs * 0.6 + fs * 0.6;
+        const ly = y - labelH < 0 ? y : y - labelH;   // keep label on-screen
         return (
           <g key={o.id}>
-            <rect x={x} y={y} width={w} height={h} fill="none"
-                  stroke={color} strokeWidth={Math.max(vw, vh) / 300} />
-            <rect x={x} y={Math.max(0, y - vh * 0.045)} width={Math.max(w, vw * 0.14)}
-                  height={vh * 0.045} fill={color} />
-            <text x={x + vw * 0.006} y={y - vh * 0.012}
-                  fontSize={vh * 0.032} fill="#fff" fontFamily="monospace">
-              {o.type} {o.confidence ? Math.round(o.confidence * 100) + "%" : ""}
+            <rect x={x} y={y} width={w} height={h} rx={sw * 1.5}
+                  fill="none" stroke={color} strokeWidth={sw} />
+            <rect x={x} y={ly} width={labelW} height={labelH} fill={color} rx={sw} />
+            <text x={x + fs * 0.35} y={ly + labelH * 0.74}
+                  fontSize={fs} fontWeight="600" fill="#06220f" fontFamily="ui-sans-serif, system-ui">
+              {label}
             </text>
           </g>
         );
