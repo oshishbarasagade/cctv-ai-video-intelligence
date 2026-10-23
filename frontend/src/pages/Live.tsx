@@ -108,9 +108,13 @@ export function Live() {
         video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      const v = videoRef.current;
+      if (v) {
+        v.srcObject = stream;
+        // Show the feed as soon as the stream is attached. Don't await play()
+        // — in some browsers its promise never resolves and would hang here,
+        // leaving the UI stuck on the "requesting…" spinner.
+        v.play().catch(() => {});
       }
       setCamState("active");
     } catch (e: any) {
