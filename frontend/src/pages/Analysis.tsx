@@ -83,13 +83,32 @@ export function Analysis() {
   const video: Video | undefined = overview.data?.video;
   const dur = duration || video?.duration_sec || 0;
 
-  // --- load raw video as an authorized blob ---
+  // --- load the video ---
+  // Prefer a direct signed Storage URL (streams progressively, no full download);
+  // fall back to fetching the raw bytes as an authorized blob (offline mode).
   useEffect(() => {
-    let url: string | undefined;
-    api.get(`/analysis/${videoId}/stream`, { responseType: "blob" })
-      .then((r) => { url = URL.createObjectURL(r.data); setVideoSrc(url); })
-      .catch(() => setVideoSrc(undefined));
-    return () => { if (url) URL.revokeObjectURL(url); };
+    let blobUrl: string | undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await api.get<{ url: string | null }>(`/analysis/${videoId}/stream-url`);
+        if (!cancelled && data?.url) {
+          setVideoSrc(data.url);
+          return;
+        }
+      } catch {
+        /* fall through to blob */
+      }
+      try {
+        const r = await api.get(`/analysis/${videoId}/stream`, { responseType: "blob" });
+        if (cancelled) return;
+        blobUrl = URL.createObjectURL(r.data);
+        setVideoSrc(blobUrl);
+      } catch {
+        if (!cancelled) setVideoSrc(undefined);
+      }
+    })();
+    return () => { cancelled = true; if (blobUrl) URL.revokeObjectURL(blobUrl); };
   }, [videoId]);
 
   function seek(ts: number) {

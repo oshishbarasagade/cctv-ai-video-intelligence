@@ -358,10 +358,24 @@ def stream_video(video_id: str, uid: str = Depends(current_user_id)):
     v = _own_video(video_id, uid)
     path = Path(v.get("storage_path") or "")
     fmt = v.get("format") or "mp4"
-    key = f"{uid}/{v.get('project_id')}/{video_id}.{fmt}"
+    key = f"{uid}/{v.get('project_id')}/{video_id.replace('-', '')}.{fmt}"
     if not _ensure_local(path, "videos", key):
         raise HTTPException(status_code=404, detail="Video file not found.")
     return FileResponse(path, media_type=f"video/{fmt}")
+
+
+@router.get("/{video_id}/stream-url")
+def stream_url(video_id: str, uid: str = Depends(current_user_id)):
+    """A URL the browser can stream the video from directly. In Supabase mode
+    this is a short-lived signed Storage URL (progressive playback, no local
+    download); offline there is none and the client falls back to /stream."""
+    v = _own_video(video_id, uid)
+    if config.OFFLINE_MODE:
+        return {"url": None}
+    from .. import supa
+    fmt = v.get("format") or "mp4"
+    key = f"{uid}/{v.get('project_id')}/{video_id.replace('-', '')}.{fmt}"
+    return {"url": supa.signed_url("videos", key, expires=3600)}
 
 
 @router.get("/{video_id}/frame")
