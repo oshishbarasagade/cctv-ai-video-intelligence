@@ -56,6 +56,20 @@ def insert(table: str, data: Dict[str, Any]) -> str:
     return data["id"]
 
 
+def insert_many(table: str, rows: list) -> None:
+    """Batch insert all rows in a single transaction."""
+    if not rows:
+        return
+    with cursor() as cur:
+        for data in rows:
+            data = dict(data)
+            data.setdefault("id", _uid())
+            data = _enc(data)
+            cols = ", ".join(data.keys())
+            ph = ", ".join("?" for _ in data)
+            cur.execute(f"insert into {table} ({cols}) values ({ph})", list(data.values()))
+
+
 def update(table: str, row_id: str, owner_id: str, data: Dict[str, Any]) -> None:
     data = _enc(dict(data))
     sets = ", ".join(f"{k}=?" for k in data)

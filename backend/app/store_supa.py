@@ -43,6 +43,18 @@ def insert(table: str, data: Dict[str, Any]) -> str:
     return row["id"]
 
 
+def insert_many(table: str, rows: List[Dict[str, Any]]) -> None:
+    """Batch insert in chunks (one request per chunk) — far faster than
+    inserting thousands of rows one at a time over the network."""
+    prepared = []
+    for data in rows:
+        row = _fix_ts(data)
+        row.setdefault("id", _uid())
+        prepared.append(row)
+    for i in range(0, len(prepared), 500):
+        client().table(table).insert(prepared[i:i + 500]).execute()
+
+
 def update(table: str, row_id: str, owner_id: str, data: Dict[str, Any]) -> None:
     client().table(table).update(_fix_ts(data)) \
         .eq("id", row_id).eq("owner_id", owner_id).execute()

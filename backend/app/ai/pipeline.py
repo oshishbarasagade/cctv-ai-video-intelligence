@@ -51,65 +51,65 @@ def run(video_id: str, owner_id: str, storage_path: str, mode: str,
     if tracked is not None:
         det, subjects = tracked
         _apply_real_counts(feats, det)                 # events/states use YOLO counts
-        for s in subjects:
-            store.insert("subjects", {"video_id": video_id, "owner_id": owner_id, **s})
+        store.insert_many("subjects", [
+            {"video_id": video_id, "owner_id": owner_id, **s} for s in subjects])
     else:
         det = detection.detect(feats)
         _build_subjects(video_id, owner_id, feats)
 
-    for d in det:
-        store.insert("objects", {
-            "video_id": video_id, "owner_id": owner_id,
-            "frame_id": frame_ids.get(round(d["ts"], 3)),
-            "type": d["type"], "confidence": d["confidence"],
-            "bbox": d["bbox"], "ts": d["ts"]})
+    store.insert_many("objects", [{
+        "video_id": video_id, "owner_id": owner_id,
+        "frame_id": frame_ids.get(round(d["ts"], 3)),
+        "type": d["type"], "confidence": d["confidence"],
+        "bbox": d["bbox"], "ts": d["ts"]} for d in det])
 
     # --- OCR ------------------------------------------------------------------
     progress("ocr", 55)
-    for o in ocr.extract(keyframes):
-        store.insert("ocr_results", {
-            "video_id": video_id, "owner_id": owner_id,
-            "frame_id": frame_ids.get(round(o["ts"], 3)),
-            "text": o["text"], "confidence": o["confidence"],
-            "bbox": o.get("bbox"), "ts": o["ts"]})
+    store.insert_many("ocr_results", [{
+        "video_id": video_id, "owner_id": owner_id,
+        "frame_id": frame_ids.get(round(o["ts"], 3)),
+        "text": o["text"], "confidence": o["confidence"],
+        "bbox": o.get("bbox"), "ts": o["ts"]} for o in ocr.extract(keyframes)])
 
     # --- captioning -----------------------------------------------------------
     progress("captioning", 70)
     caps: List[Tuple[float, str]] = []
+    caption_rows = []
     for f in feats:
         text, model, conf = captioning.caption(f)
         caps.append((f.ts, text))
-        store.insert("captions", {
+        caption_rows.append({
             "video_id": video_id, "owner_id": owner_id,
             "frame_id": frame_ids.get(round(f.ts, 3)),
             "text": text, "model": model, "confidence": conf, "ts": f.ts})
+    store.insert_many("captions", caption_rows)
 
     # --- temporal memory + events + graph ------------------------------------
     progress("events", 85)
-    for s in analysis.build_states(feats):
-        store.insert("environment_states", {
-            "video_id": video_id, "owner_id": owner_id,
-            "ts": s["ts"], "state": s["state"]})
+    store.insert_many("environment_states", [{
+        "video_id": video_id, "owner_id": owner_id,
+        "ts": s["ts"], "state": s["state"]} for s in analysis.build_states(feats)])
     events = analysis.build_events(feats)
     event_ids = []
     for e in events:
         eid = store.insert("events", {"video_id": video_id, "owner_id": owner_id, **e})
         event_ids.append(eid)
-    for a, b, rel in analysis.build_relations(event_ids):
-        store.insert("event_relations", {
-            "video_id": video_id, "owner_id": owner_id,
-            "from_event": a, "to_event": b, "relation": rel})
+    store.insert_many("event_relations", [{
+        "video_id": video_id, "owner_id": owner_id,
+        "from_event": a, "to_event": b, "relation": rel}
+        for a, b, rel in analysis.build_relations(event_ids)])
 
     # --- embeddings (captions + events) --------------------------------------
-    for ts, text in caps:
-        store.insert("embeddings", {
-            "video_id": video_id, "owner_id": owner_id, "kind": "caption",
-            "ts": ts, "content": text, "embedding": embeddings.embed(text)})
-    for e, eid in zip(events, event_ids):
-        store.insert("embeddings", {
-            "video_id": video_id, "owner_id": owner_id, "kind": "event",
-            "ref_id": eid, "ts": e["start_time"], "content": e["description"],
-            "embedding": embeddings.embed(e["description"])})
+    emb_rows = [{
+        "video_id": video_id, "owner_id": owner_id, "kind": "caption",
+        "ts": ts, "content": text, "embedding": embeddings.embed(text)}
+        for ts, text in caps]
+    emb_rows += [{
+        "video_id": video_id, "owner_id": owner_id, "kind": "event",
+        "ref_id": eid, "ts": e["start_time"], "content": e["description"],
+        "embedding": embeddings.embed(e["description"])}
+        for e, eid in zip(events, event_ids)]
+    store.insert_many("embeddings", emb_rows)
 
     # --- subtitles ------------------------------------------------------------
     progress("subtitles", 95)
